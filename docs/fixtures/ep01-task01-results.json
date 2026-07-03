@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "text": "Now it's time for a slimy task. (Throw frog)."
+    },
+    {
+      "clip": "intro",
+      "text": "Each contestant has one frog and one throw. The frog must land intact. Measurements taken from the line to the frog's nose."
+    },
+    {
+      "clip": "taylor-max",
+      "text": "Taylor threw it 31 m — the length of half a frog on a 30.95 m stick. Max threw it 12 m into a bush and argued it counted. 12m is the length of a really long cat."
+    },
+    {
+      "clip": "peter-harry",
+      "text": "Peter threw it 28 m with excellent form. Harry's frog escaped and was not recovered."
+    },
+    {
+      "text": "Overall: Peter 1st (28 m), Taylor 2nd furthest (31 m), but disqualified, then Max (12m), Harry's escaped, Charlie absent."
+    }
+  ]
+}
