@@ -8,7 +8,7 @@ Visual mockups for a full studio task are in the [Controller worked example](con
 
 ## 1. Role and constraints
 
-The Controller is operated by the host on a **13″ Windows laptop**, folded flat as a touch screen. There is **no keyboard** during recording.
+The Controller is operated by the host on a **13″ Windows laptop**, folded flat as a touch screen. There is **no keyboard** during recording. It launches **full-screen** (borderless) for a clean stage look; `Esc` leaves full screen and `F11` toggles it, so a developer is never trapped in the borderless window.
 
 
 | Constraint              | Implication                                          |
@@ -25,9 +25,9 @@ When Alex sends a command that starts media on the Viewer, the Controller **imme
 
 The Viewer returns to idle when playback ends on its own; the Controller does not listen for a "clip finished" message.
 
-Examples: **Play intro** → opening bit page at once; **Play next clip** → next step's text at once; **Outro** → home at once while `outro.mp4` plays.
+Examples: **Play intro** → opening bit page at once; **Play next clip** → next step's text at once; **Play outro** → home at once while `outro.mp4` plays.
 
-The `TV:` indicator in the header ([§4](#4-studio-task-flow)) shows the Controller's model of the **last command it sent**, not a readback from the Viewer. Because the operator only moves the show on once the current clip has finished ([HLD §2, The operator paces the show](high-level-design.md#2-design-principles)), the TV has returned to idle by the time Alex advances past a video — so the indicator and the **Cancel playing** rule stay in step with the screen even though there is no clip-ended event.
+The header is split so the two "where am I" questions live on opposite sides. The **left** shows the *controller* state — where the operator is (`Ep · Task · Step/page`). The **right**, next to the connection indicator, shows the *viewer/TV* state as a `TV: …` pill — the Controller's model of the **last command it sent** (what the audience is looking at), not a readback from the Viewer. Because the operator only moves the show on once the current clip has finished ([HLD §2, The operator paces the show](high-level-design.md#2-design-principles)), the TV has returned to idle by the time Alex advances past a video — so the indicator and the **Cancel playing** rule stay in step with the screen even though there is no clip-ended event.
 
 ### Connection status and recovery
 
@@ -79,13 +79,15 @@ Single button: **Play intro** → `show_media` → `episodes/<id>/intro.mp4`, an
 
 Shows the episode's `opening_bit` text from the cached catalogue (operator notes for the opening joke / studio setup; sourced from `episodes/<id>/opening-bit.json` on the Viewer). Not shown on the TV.
 
-Footer: **Prize task** → opens `task00_prize` at step 1 (playback).
+Footer: **Back** (→ episode intro, iPad-only) and **Prize task** → opens `task00_prize` at step 1 (playback).
 
 ### 3.4 End of episode — outro
 
-After the **live task** is scored ([§5](#5-live-task)), **Outro** replaces **Next task** / **Live task** on prep (once the episode scoreboard has been shown) and on post-display.
+After the **live task** is scored ([§5](#5-live-task)), the forward action on the live task's post-display and series-display pages is **Continue ›** (it replaces the studio **Next task** / **Live task**). **Continue** clears the TV to the standard background and moves the Controller to a short **pre-outro** page.
 
-**Outro** → `show_media` → `episodes/<id>/outro.mp4`, and the Controller **immediately** returns to **home** ([§3.1](#31-home--episode-picker)). When the outro ends, the Viewer returns to idle.
+The **pre-outro page** is the beat between the final scoreboard and the outro: the TV rests on the idle background while the operator gets ready. Footer: **Back** (→ post-display) and **Play outro**.
+
+**Play outro** → `show_media` → `episodes/<id>/outro.mp4`, and the Controller **immediately** returns to **home** ([§3.1](#31-home--episode-picker)). When the outro ends, the Viewer returns to idle.
 
 Studio tasks use **Next task** or **Live task** on prep/post-display when another segment follows ([§4.5](#45-scoreboard-branches)).
 
@@ -103,11 +105,15 @@ stateDiagram-v2
   Scoring --> Prep: Scoreboard
   Prep --> PostDisplay: Display episode scoreboard
   Prep --> Playback: Next task or Live task (skip TV)
-  PostDisplay --> PostDisplay: Series scoreboard
+  PostDisplay --> SeriesDisplay: Series scoreboard
   PostDisplay --> Playback: Next task
   PostDisplay --> LiveTask: Live task
+  SeriesDisplay --> Playback: Next task
+  SeriesDisplay --> LiveTask: Live task
   Scoring --> Playback: Back
   Prep --> Scoring: Back
+  PostDisplay --> Prep: Back
+  SeriesDisplay --> PostDisplay: Back
 ```
 
 
@@ -115,10 +121,11 @@ stateDiagram-v2
 | ---- | ---- | ------ |
 | **Playback** | Before the final step | **Play next clip** or **Score** |
 | **Scoring** | Final step | **Scoreboard** only |
-| **Prep** | After **Scoreboard** | **Next task** or **Live task**, and **Display episode scoreboard** |
-| **Post-display** | After episode scoreboard on TV | **Next task** or **Live task**, and optional **Series scoreboard** |
+| **Prep** | After **Scoreboard** | **Back**, **Next task** / **Live task**, and **Display episode scoreboard** |
+| **Post-display** | After episode scoreboard on TV | **Back**, optional **Series scoreboard**, and **Next task** / **Live task** |
+| **Series-display** | After **Series scoreboard** on TV | **Back** and **Next task** / **Live task** (no series button — see [§4.4](#44-post-display)) |
 
-**Header:** `Ep … · Task … · Step X of Y · TV: …` (abbreviate clip names). On prep / post-display / live task, replace the step slot with the page label (`Scoreboard prep`, `On screen`, `Live task`).
+**Header (left = controller state):** `Ep … · Task … · Step X of Y` (abbreviate clip names). On prep / post-display / series-display / live task, the step slot becomes the page label (`Scoreboard prep`, `Episode scoreboard`, `Series scoreboard`, `Live task`). The `TV: …` viewer state sits on the **right**, by the connection indicator ([Operator ahead of the TV](#operator-ahead-of-the-tv)).
 
 **Display names** are derived from ids, not stored titles: an episode id `epNN` renders as `Ep NN`; a task id containing `_prize` renders as **Prize task** and the live segment as **Live task**; any other task id `taskNN` renders as `Task NN`. This same rule drives the home-page episode/segment list ([§3.1](#31-home--episode-picker)).
 
@@ -153,11 +160,11 @@ Footer: **Next task** or **Live task** (if no further studio task), and **Displa
 
 After **Display episode scoreboard**. Series standings on the Controller (ranked 1st to last). TV shows the episode scoreboard.
 
-Footer: **Next task** or **Live task**, and **Series scoreboard** (optional → 2 on TV).
+Footer: **Back** (→ prep), optional **Series scoreboard**, and **Next task** / **Live task**.
 
 Leaving via **Next task** / **Live task** applies the fold-in described in [§4.3](#43-scoreboard-prep). **Series scoreboard** sends `show_series_leaderboard` with both values **derived from the episode files** — `current` = the sum of every episode's combined totals, `previous` = that same sum excluding the episode currently open. Nothing is persisted or committed, so re-showing derives the identical pair and animates the same way each time — see [High-Level Design §5](high-level-design.md#scores).
 
-No **Back** button — forward only.
+**Series-display page.** Tapping **Series scoreboard** sends the command **and moves the Controller to a dedicated series-display page** (TV showing the series board). This page has no **Series scoreboard** button — that is what stops the operator getting stuck re-tapping it on a page that never changes. Its footer is just **Back** (→ post-display) and the same forward action (**Next task** / **Live task**, or **Continue ›** for the live task). Re-showing the series board, if wanted, is done by going **Back** to post-display and tapping it again.
 
 ### 4.5 Scoreboard branches
 
@@ -184,9 +191,9 @@ The live task is the last segment of an episode — filmed in the studio after a
 Opened by **Live task** from prep or post-display when there is no next studio task.
 
 - Reminder text from the episode's `live_task` in the cached catalogue (sourced from `episodes/<id>/live-task.json` on the Viewer).
-- **100 s countdown** (Controller only) — starts when Alex taps **Start countdown**. 100 s is a season-wide constant; `live-task.json` carries no per-task duration.
+- **100 s countdown** (Controller only) — one toggle button drives it: **Start countdown** → **Pause countdown** (while running) → **Resume countdown** (while paused). Pausing keeps the remaining time; when the countdown reaches 0 (or a fresh live task is opened) the button returns to **Start countdown**. 100 s is a season-wide constant; `live-task.json` carries no per-task duration.
 
-Footer: **Score** (available before or after the countdown).
+Footer: **Score** (available before, during, or after the countdown).
 
 ### 5.2 Live task scoring
 
@@ -198,23 +205,13 @@ Footer: **Scoreboard** → prep ([§5.3](#53-live-task-scoreboard-prep)).
 
 Alex **must** put the episode scoreboard on the TV — skipping it is not offered.
 
-**Before** the episode scoreboard has been shown this round:
-
-Footer: **Display episode scoreboard** only.
-
-**After** the episode scoreboard has been shown:
-
-Footer: **Outro**, and **Display episode scoreboard** (to re-show if needed).
-
-Alex may skip the **series** scoreboard by tapping **Outro** from prep (after the episode board has been shown) or from post-display.
+Footer: **Back** (→ live scoring) and **Display episode scoreboard**. Displaying the board moves straight to the live post-display ([§5.4](#54-live-task-post-display)); the operator skips the **series** board (if desired) by tapping **Continue ›** there rather than showing it.
 
 ### 5.4 Live task post-display
 
-After **Display episode scoreboard**. Same as studio post-display but **Outro** instead of **Next task** / **Live task**, plus optional **Series scoreboard**.
+After **Display episode scoreboard**. Same as studio post-display, but the forward action is **Continue ›** instead of **Next task** / **Live task**. Footer: **Back** (→ prep), optional **Series scoreboard** (→ the live series-display page, whose forward action is also **Continue ›**), and **Continue ›**.
 
-Tapping **Outro** applies the same fold-in as leaving any task ([§4.3](#43-scoreboard-prep)); because the live task is the last task, the episode totals are now final and equal the episode's contribution to the series ([High-Level Design §5](high-level-design.md#scores)).
-
-No **Back** button — forward only.
+**Continue ›** clears the TV to the background and opens the **pre-outro page** ([§3.4](#34-end-of-episode--outro)). Its **Play outro** applies the same fold-in as leaving any task ([§4.3](#43-scoreboard-prep)); because the live task is the last task, the episode totals are now final and equal the episode's contribution to the series ([High-Level Design §5](high-level-design.md#scores)).
 
 ---
 
@@ -235,7 +232,7 @@ Same pages and step model as other tasks. Folder: `tasks/task00_prize/`.
 ## 7. Episode progression
 
 ```
-Home → episode intro → opening bit → task00_prize → task01 → … → live task → outro → Home
+Home → episode intro → opening bit → task00_prize → task01 → … → live task → (final scoreboard) → pre-outro → outro → Home
 ```
 
 ---
@@ -269,9 +266,9 @@ Here the prize task has already been folded into `previous_totals` (`Charlie 5, 
 
 `segment`: the id of the current task (`task00_prize` | `task01` | `task02` | …) or `live_task` for the live segment.
 
-`ui_page`: `home` | `episode_intro` | `opening_bit` | `playback` | `scoring` | `scoreboard_prep` | `post_display` | `live_task` | `live_scoring`
+`ui_page`: `home` | `episode_intro` | `opening_bit` | `playback` | `scoring` | `scoreboard_prep` | `post_display` | `series_display` | `pre_outro` | `live_task` | `live_scoring`
 
-During the live task, `scoreboard_prep` and `post_display` are reused rather than given live-specific values; `segment == live_task` marks the live variants (which offer **Outro** in place of **Next task** / **Live task**, per [§5.3–§5.4](#53-live-task-scoreboard-prep)).
+During the live task, `scoreboard_prep`, `post_display`, and `series_display` are reused rather than given live-specific values; `segment == live_task` marks the live variants (which offer **Continue ›** — leading to the `pre_outro` page and then the outro — in place of **Next task** / **Live task**, per [§5.3–§5.4](#53-live-task-scoreboard-prep)). `pre_outro` is only reached from the live task.
 
 ---
 
@@ -286,18 +283,25 @@ During the live task, `scoreboard_prep` and `post_display` are reused rather tha
 | Cancel playing                         | `background`                       |
 | Display episode scoreboard             | `show_leaderboard`                 |
 | Series scoreboard (post-display)       | `show_series_leaderboard`          |
-| Next task / Live task / Outro (clear)  | `background`, then advance segment |
+| Continue › (live) / Cancel to pre-outro | `background`                       |
+| Next task / Live task (clear)          | `background`, then advance segment |
 
 
 ---
 
 ## 11. Touch targets
 
-Footer buttons ≥ 56 px tall, 16 px apart. Score cells ≥ 48 × 48 px. **Next task**, **Live task**, **Outro**, **Start countdown**, **Display episode scoreboard**, and **Series scoreboard** ≥ 80 px tall.
+The footer bar is a chunky ~104 px band. Footer buttons ≥ 66 px tall, ~18 px apart; the primary/forward actions (**Next task**, **Live task**, **Outro**, **Display episode scoreboard**, **Series scoreboard**) are ≥ 96 px tall and use the red accent. Score cells ≥ 48 × 48 px and grow to fill their row. Operator notes (step text, opening-bit and live-task notes) render in the bundled Veteran Typewriter font on a dark card for readability and theme.
 
 ---
 
-## 12. Deferred
+## 12. Development aids
+
+- **Reset series (dev)** — a button on the home page that deletes every episode's saved `show_state.json`, zeroing the series standings. For development only; not part of the show flow.
+
+---
+
+## 13. Deferred
 
 - Re-show scoreboard without walking back through prep
 - Editable step text during recording

@@ -18,3 +18,19 @@ htmlcov/
 .vscode/
 .idea/
 .DS_Store
+
+# ---------------------------------------------------------------------------
+# Sample show content — kept locally for testing, NOT committed. The app's own
+# reusable chrome (scoreboard kit, seals, fonts, backdrop plates) IS committed.
+# ---------------------------------------------------------------------------
+# Heavy / per-episode sample media
+viewer/media/episodes/
+viewer/media/assets/intros/
+# Sample roster and personal photos (specific faces)
+viewer/media/contestants.json
+viewer/media/assets/contestants/
+viewer/media/assets/taskmaster.png
+viewer/media/assets/backgrounds/default.png
+
+# Controller generated catalogue cache and per-episode runtime state
+controller/config/

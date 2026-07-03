@@ -96,14 +96,16 @@ See [protocol §4–§5](protocol-design.md#4-connection-lifecycle) for connecti
 
 The **idle background** is the screen the show rests on whenever nothing else is displayed — at launch, between segments, and after a video ends. It is a display mode in its own right, not a layer drawn behind media or the scoreboard.
 
-The asset shown at runtime is `assets/backgrounds/default.png`: the ornate red-and-gold flame backdrop with the current series' Taskmaster portrait composited into the central gold frame and a `TASKMASTER` nameplate below. Shown full-screen, scaled to cover the display (crop to fill, preserve aspect ratio).
+The asset shown at runtime is `assets/backgrounds/default.png`: the ornate red-and-gold flame backdrop with the current series' Taskmaster portrait composited into the central gold frame and a `TASKMASTER` nameplate below.
+
+The asset is authored **16:9 (1920×1080)** to match the TV, so it is simply **cover-scaled** to fill the display (`KeepAspectRatioByExpanding`, centred). Any tiny aspect mismatch crops symmetrically and imperceptibly; the framed portrait and nameplate stay centred and full-size — no vertical zoom. The width beyond the original 3:2 framing is filled by extending the flame damask outward (reflected at build time), keeping the central frame untouched.
 
 The other background files are **build-time sources**, not shown directly and never returned as selectable backgrounds:
 
 | File | Role |
 | ---- | ---- |
-| `assets/backgrounds/default.png` | The idle background rendered on the TV |
-| `assets/backgrounds/backdrop-base.png` | The plate with an **empty** central frame — base for compositing a new portrait each series |
+| `assets/backgrounds/default.png` | The idle background rendered on the TV (16:9, 1920×1080) |
+| `assets/backgrounds/backdrop-base.png` | The plate with an **empty** central frame — base for compositing a new portrait each series (also 16:9) |
 | `assets/taskmaster-backdrop.png` | The ornate flame backdrop plate (source used to produce the above) |
 | `assets/taskmaster.png` | The current series' Taskmaster portrait dropped into the frame |
 
@@ -115,8 +117,8 @@ There is a single selectable background this season — the idle background (`de
 
 | Input | Behaviour |
 | ----- | --------- |
-| Video | Play once, embedded in the main window. Aspect ratio preserved; videos are authored to fill the 16:9 display, and any unavoidable letterbox/pillarbox is plain black. When playback **ends**, cross-cut or hold-then-cut to the idle background — never a blank frame. |
-| Still | Show full-screen until the next command; no auto-return to the idle background. Load off-screen; keep the previous frame visible until the still is decoded, then switch. |
+| Video | Play once, embedded in the main window. Aspect ratio preserved; videos are authored to fill the 16:9 display, and any unavoidable letterbox/pillarbox is plain black. **At the start**, keep the previous mode (usually the idle background) visible and only cut to the clip once its first frame has actually painted (detected via first non-zero playback position / buffered status, with a short fallback), so there is no black flash on the way in. When playback **ends**, cut to the idle background **first**, then release the player — cutting straight from the last frame to the background with no black in between. |
+| Still | Shown until the next command; no auto-return to the idle background. **Contained and centred on black — never cropped, stretched, or rotated:** a portrait photo shows with black to its left and right rather than being cropped to fill. EXIF orientation is honoured (via `QImageReader` auto-transform) so phone photos display upright. Load off-screen; keep the previous frame visible until the still is decoded, then switch. |
 
 When a new `show_media` arrives during playback, stop the current video **without** clearing the display; show the new media once its first frame is ready (or the still is loaded). If the new file fails, revert to previous content or the idle background and send `error`.
 
@@ -126,7 +128,7 @@ Path validation: resolve under `media/`, reject `..` and absolute paths → `err
 
 **Command:** `show_leaderboard` ([protocol §5.4](protocol-design.md#54-show_leaderboard))
 
-Shows the scoreboard as its own full-screen mode on a **plain black background** (not drawn over the idle background). Build rows and load portraits off-screen; keep the previous display until the scoreboard’s first frame is ready, then switch. Resolve each contestant's name and portrait locally by id. Missing portrait → use a neutral placeholder and log locally (missing contestant entry → `error` `not_found`).
+Shows the scoreboard as its own full-screen mode, drawn over the **typewriter background plate** (`assets/scoreboard/background.jpg`), matching the VodBox reference. This is a distinct mode, not composited over the idle background. Build rows and load portraits off-screen; keep the previous display until the scoreboard’s first frame is ready, then switch. Resolve each contestant's name and portrait locally by id. Missing portrait → use a neutral placeholder and log locally (missing contestant entry → `error` `not_found`).
 
 ### 4.4 Series leaderboard
 
@@ -136,26 +138,28 @@ Same widget and animation as the episode leaderboard, with two differences:
 
 - **Scores** are cumulative series totals rather than a single episode's.
 - **The leader's seal is gold.** Every contestant tied for the top score uses the **gold seal** (`assets/seal-gold.png`); everyone else keeps the standard red seal (`assets/seal.png`). If all scores are zero (season not yet started) no one is treated as the leader — all seals are red. The gold asset is a hue/tone recolour of the red seal, so it shares identical shape, shading, and alpha.
+- **The gold seal is animated, not pre-set.** The board opens on the *previous* totals with the gold seal on the previous leader, then — as the scores count up and rows reorder — the gold crossfades to whoever leads on the *current* totals (and off anyone who has been overtaken). This is done by stacking the gold seal over the red one and animating its opacity, so the eventual leader is revealed by the animation rather than being obvious the instant the board appears. The episode board never goes gold.
 
 ## 5. Scoreboard visual specification
 
 The target appearance is the [VodBox tm-scoreboard](https://vodbox.github.io/tm-scoreboard/) demo. Our implementation is PySide6, not an embedded browser, but **layout numbers, timing, and motion** are ported from the vendored VodBox reference sources in the repo (MIT — see [§8](#8-third-party-attribution)).
 
-The scoreboard renders over a **plain black background** — the framed portraits and score seals are the only elements; there is no patterned plate behind them.
+The scoreboard renders over the **typewriter background plate** (`assets/scoreboard/background.jpg`) — the sepia typewriter with the `TASKMASTER` sheet, matching the VodBox reference — cover-scaled to fill the screen. The framed portraits and score seals are composited on top of it.
 
-There is **no scoreboard image on disk**: the Viewer composites the board at runtime from the parts below.
+The board itself is **composited at runtime** from the parts below (frames, seals, portraits, score text); only the background plate is a whole image on disk.
 
 ### Assets used by the scoreboard
 
 | Part | Path | Notes |
 | ---- | ---- | ----- |
+| Background plate | `assets/scoreboard/background.jpg` | Typewriter backdrop, cover-scaled to fill the screen behind the board. Vendored from the VodBox kit ([§8](#8-third-party-attribution)). |
 | Portrait frame | `assets/scoreboard/frame.png` | Gold frame overlaid at full column width. Part of the vendored VodBox kit ([§8](#8-third-party-attribution)). |
 | Wax seal (red) | `assets/seal.png` | Default seal, all episode-leaderboard rows and non-leaders on the series board. |
 | Wax seal (gold) | `assets/seal-gold.png` | Series leader(s) only ([§4.4](#44-series-leaderboard)). Hue/tone recolour of the red seal; identical shape/shading/alpha. |
 | Contestant portrait | `assets/contestants/<id>.png` | Resolved by the `contestant` id from the leaderboard payload. Missing → neutral placeholder + local log. |
 | Score font | `assets/fonts/veteran_typewriter/veteran_typewriter-webfont.ttf` | Registered at startup via `QFontDatabase` ([§5.4](#54-score-seal-and-typography)). |
 | Layout/animation spec | `assets/scoreboard/reference/` | Upstream CSS/JS/HTML kept as the porting reference; **not loaded at runtime**. |
-| Visual references | `assets/scoreboard/blank.jpg`, `assets/scoreboard/ref.jpg` | Upstream stills kept for eyeballing the target look; not used at runtime. |
+| Visual references | `assets/scoreboard/blank.jpg`, `assets/scoreboard/ref.jpg` | Upstream stills kept for eyeballing the target look; not used at runtime. (`ref.jpg` is a full-board screenshot; the clean plate is `background.jpg` above.) |
 
 Provenance and refresh instructions for the vendored pieces are in `assets/scoreboard/SOURCE.md`.
 
@@ -198,7 +202,7 @@ Each frame gently rotates about its centre:
 | Easing | ease-in-out, alternate, infinite |
 | Stagger | `animation-delay: -index * 1.25 s` so frames are out of sync |
 
-In Qt: `QPropertyAnimation` on rotation or a custom paint transform per contestant widget with phased timers.
+In Qt: a custom paint transform per contestant driven by the board's master timer. The wobble is **continuous** — it runs the whole time the board is on screen, including after the count-up/reorder has settled (the timer must not stop when the score animation finishes).
 
 No hover/click affordances from the interactive demo (+ button, exit, score edit, play button).
 
@@ -207,7 +211,7 @@ No hover/click affordances from the interactive demo (+ button, exit, score edit
 Below the frame:
 
 1. **Wax seal** image, full column width. Two variants exist: red (`assets/seal.png`, default) and gold (`assets/seal-gold.png`). The episode leaderboard always uses red; the series leaderboard uses gold for the leader(s) — see [§4.4](#44-series-leaderboard).
-2. **Score text** — centred on the seal, white, Veteran Typewriter, ~84 px, slight shadow `1px 1px 3px rgba(0,0,0,0.2)`, ~8 px horizontal offset per reference.
+2. **Score text** — white, Veteran Typewriter, ~84 px, slight shadow `1px 1px 3px rgba(0,0,0,0.2)`. Centre the glyph **ink** (tight font-metrics bounding box, not the item's full line box, which is padded by the font descent for digit-only text) on the seal's **visual centre** — a fraction ≈ (0.53, 0.52) of the seal art, measured from its alpha, rather than the geometric box centre — so the number reads as sitting in the middle of the wax.
 
 Register the Veteran Typewriter font at startup via `QFontDatabase`.
 
@@ -215,13 +219,13 @@ Register the Veteran Typewriter font at startup via `QFontDatabase`.
 
 After sorting, let `maxScore` be the highest current score (during animation, use the **target** score for ordering/emphasis at the end of the motion; during count-up, reference implementation reorders at animation start — see §6).
 
-| Condition | Frame scale (`transform-origin: bottom`) |
-| --------- | -------------------------------------- |
+| Condition | Column scale |
+| --------- | ------------ |
 | Score equals `maxScore` and ≤2 tied for first | **1.2×** (`larger`) |
 | Score equals `maxScore` and >2 tied for first | **1.1×** (`large`) |
 | Otherwise | 1.0× |
 
-Scale transitions use **2 s** duration (same as horizontal reorder).
+The emphasis scales the **whole column together** — portrait frame **and** its seal + score — about the column's own visual centre, so a leader grows/shrinks in place as a unit rather than only the frame growing from its base. The board opens on the **previous** standings, so the *previous* leader is drawn bigger during the opening hold; as the scores count up and rows reorder, that leader shrinks back to 1.0× while the *new* leader grows to 1.2×/1.1×, letting the audience watch the lead change. Scale transitions use **2 s** duration (same as horizontal reorder).
 
 ### 5.6 Scaling to the TV
 
