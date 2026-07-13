@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QImageReader, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -16,6 +16,13 @@ from PySide6.QtWidgets import QStackedWidget, QWidget
 
 import assets
 import protocol
+
+
+def _fit_within(size: QSize, box: QSize) -> QSize:
+    """Scale *size* to fit inside *box*, preserving aspect ratio."""
+    scale = min(box.width() / size.width(), box.height() / size.height())
+    return QSize(max(1, round(size.width() * scale)),
+                 max(1, round(size.height() * scale)))
 
 
 class _StillView(QWidget):
@@ -104,11 +111,17 @@ class MediaView(QStackedWidget):
         """Load and display a still. Returns False if the image failed to load.
 
         Uses QImageReader with auto-transform so EXIF-rotated photos (e.g.
-        phone portraits) display upright rather than sideways.
+        phone portraits) display upright rather than sideways. SVGs are vector,
+        so they are rendered up to the TV resolution instead of their small
+        intrinsic size, keeping them crisp full-screen.
         """
         self.stop()
         reader = QImageReader(str(path))
         reader.setAutoTransform(True)
+        if path.suffix.lower() == ".svg":
+            intrinsic = reader.size()
+            if intrinsic.isValid() and not intrinsic.isEmpty():
+                reader.setScaledSize(_fit_within(intrinsic, QSize(1920, 1080)))
         image = reader.read()
         if image.isNull():
             return False

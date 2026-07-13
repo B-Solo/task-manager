@@ -26,6 +26,8 @@ htmlcov/
 # Heavy / per-episode sample media
 viewer/media/episodes/
 viewer/media/assets/intros/
+# Local raw source media (scratch, not part of the app)
+raw-media/
 # Sample roster and personal photos (specific faces)
 viewer/media/contestants.json
 viewer/media/assets/contestants/

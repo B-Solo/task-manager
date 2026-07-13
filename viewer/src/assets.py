@@ -22,7 +22,7 @@ EPISODES_DIR = "episodes"
 
 # Extensions the Viewer recognises, in resolution-precedence order.
 VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm")
-IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".svg")
 MEDIA_EXTS = VIDEO_EXTS + IMAGE_EXTS
 
 

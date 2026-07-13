@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import QStackedWidget, QVBoxLayout, QWidget
 
 import assets
@@ -21,6 +21,10 @@ from display.media import MediaView
 from display.scoreboard import Scoreboard
 
 log = logging.getLogger("viewer.window")
+
+# How long to hold on a video's final frame before returning to the idle
+# background when a clip ends on its own (§4.2).
+FREEZE_ON_END_MS = 1000
 
 
 class ViewerWindow(QWidget):
@@ -52,6 +56,12 @@ class ViewerWindow(QWidget):
         # first frame). We hold on the background until videoReady fires.
         self._pending_video_reveal = False
 
+        # Holds the last video frame for a beat after a clip ends before we cut
+        # back to the idle background.
+        self._freeze_timer = QTimer(self)
+        self._freeze_timer.setSingleShot(True)
+        self._freeze_timer.timeout.connect(self._end_freeze)
+
         self._show_mode(self._background)
 
     def _show_mode(self, widget: QWidget) -> None:
@@ -64,6 +74,8 @@ class ViewerWindow(QWidget):
     # -- command dispatch (runs on the GUI thread) ------------------------
     def handle_command(self, message: dict) -> None:
         mtype = message.get("type")
+        # Any new command cancels a pending end-of-clip freeze.
+        self._freeze_timer.stop()
         try:
             if mtype == protocol.SHOW_MEDIA:
                 self._do_show_media(message)
@@ -147,15 +159,21 @@ class ViewerWindow(QWidget):
             self._show_mode(self._media)
 
     def _on_video_finished(self) -> None:
-        # Return to idle background when a video ends on its own (§4.2). Show
-        # the background first, then release the player, so we cut straight
-        # from the last frame to the background with no black in between.
+        # Hold on the final frame for a beat, then return to the idle background
+        # (§4.2). We deliberately do NOT stop the player yet: leaving the ended
+        # clip loaded keeps its last frame on screen during the freeze.
+        if self._current is self._media:
+            self._freeze_timer.start(FREEZE_ON_END_MS)
+
+    def _end_freeze(self) -> None:
+        # Freeze elapsed: cut to the background, then release the player.
         if self._current is self._media:
             self._show_mode(self._background)
             self._media.stop()
 
     def _on_media_failed(self, code: str, msg: str) -> None:
         self._pending_video_reveal = False
+        self._freeze_timer.stop()
         self._error(self._media_ref, code, msg, self._media_command)
         self._show_mode(self._background)
         self._media.stop()

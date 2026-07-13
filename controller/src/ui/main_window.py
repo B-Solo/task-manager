@@ -34,7 +34,7 @@ from ui.widgets import ScorePicker, footer_button
 log = logging.getLogger("controller.ui")
 
 VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm")
-IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".svg")
 
 LIVE_COUNTDOWN_S = 100  # season-wide constant (Controller design §5.1)
 
@@ -95,6 +95,15 @@ class MainWindow(QWidget):
         hl = QHBoxLayout(header)
         hl.setContentsMargins(20, 6, 20, 6)
         hl.setSpacing(18)
+        # Dev aid: jump straight home from any page.
+        home = QPushButton("\u2302 Home")
+        home.setCursor(Qt.CursorShape.PointingHandCursor)
+        home.setStyleSheet(
+            "QPushButton { font-size:15px; padding:6px 14px; background:#2a2d34;"
+            " border:1px solid #3c4049; border-radius:8px; color:#f2f2f2; }"
+            " QPushButton:hover { background:#343842; }")
+        home.clicked.connect(self.go_home)
+        hl.addWidget(home, 0)
         self._title = QLabel("Taskmaster Control")
         self._title.setStyleSheet("font-size:19px; font-weight:bold; color:#f0f0f0;")
         self._tv = QLabel("TV: idle")
@@ -345,9 +354,9 @@ class MainWindow(QWidget):
         label = QLabel(text)
         label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         label.setStyleSheet(
-            f'font-family:"{self._font()}"; font-size:22px; color:#f2ede0;'
-            " background:#20222a; border:1px solid #33363f; border-radius:12px;"
-            " padding:18px 20px;")
+            f'font-family:"{self._font()}"; font-size:30px; line-height:140%;'
+            " color:#f2ede0; background:#20222a; border:1px solid #33363f;"
+            " border-radius:12px; padding:20px 24px;")
         label.setWordWrap(True)
         self._content_layout.addWidget(label)
 

@@ -42,8 +42,9 @@ QPushButton[primary="true"]:hover {{ background: {RED_HI}; }}
 QPushButton[danger="true"] {{ background: #4a1e1e; border-color: #6e2a2a; }}
 QPushButton[danger="true"]:hover {{ background: #5c2626; }}
 
-QMenu {{ background: #22242a; color: #eaeaea; border: 1px solid #3c4049; }}
-QMenu::item {{ padding: 8px 24px; }}
+QMenu {{ background: #22242a; color: #eaeaea; border: 1px solid #3c4049;
+    font-size: 21px; }}
+QMenu::item {{ padding: 16px 34px; min-width: 240px; }}
 QMenu::item:selected {{ background: {RED}; color: white; }}
 """
 

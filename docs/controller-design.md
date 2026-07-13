@@ -8,7 +8,7 @@ Visual mockups for a full studio task are in the [Controller worked example](con
 
 ## 1. Role and constraints
 
-The Controller is operated by the host on a **13″ Windows laptop**, folded flat as a touch screen. There is **no keyboard** during recording. It launches **full-screen** (borderless) for a clean stage look; `Esc` leaves full screen and `F11` toggles it, so a developer is never trapped in the borderless window.
+The Controller is operated by the host on a **13″ Windows laptop**, folded flat as a touch screen. There is **no keyboard** during recording. It launches **full-screen** (borderless) for a clean stage look; `Esc` leaves full screen and `F11` toggles it, so a developer is never trapped in the borderless window. A small **⌂ Home** button in the header (top-left) jumps straight back to the episode picker from any page — a development/operator convenience that never touches the TV.
 
 
 | Constraint              | Implication                                          |
@@ -223,7 +223,7 @@ Same pages and step model as other tasks. Folder: `tasks/task00_prize/`.
 | Difference     | Detail                                  |
 | -------------- | --------------------------------------- |
 | Header         | **Prize task** instead of task id       |
-| Media          | Stills (`.jpg`) via `show_media`        |
+| Media          | Stills (`.jpg`/`.png`/`.svg`) via `show_media` |
 | Cancel playing | Emphasised — clears a still from the TV |
 
 
@@ -291,7 +291,7 @@ During the live task, `scoreboard_prep`, `post_display`, and `series_display` ar
 
 ## 11. Touch targets
 
-The footer bar is a chunky ~104 px band. Footer buttons ≥ 66 px tall, ~18 px apart; the primary/forward actions (**Next task**, **Live task**, **Outro**, **Display episode scoreboard**, **Series scoreboard**) are ≥ 96 px tall and use the red accent. Score cells ≥ 48 × 48 px and grow to fill their row. Operator notes (step text, opening-bit and live-task notes) render in the bundled Veteran Typewriter font on a dark card for readability and theme.
+The footer bar is a chunky ~104 px band. Footer buttons ≥ 66 px tall, ~18 px apart; the primary/forward actions (**Next task**, **Live task**, **Outro**, **Display episode scoreboard**, **Series scoreboard**) are ≥ 96 px tall and use the red accent. Score cells ≥ 48 × 48 px and grow to fill their row. Operator notes (step text, opening-bit and live-task notes) render **large** (~30 px) in the bundled Veteran Typewriter font on a dark card, so the host can read the prompt at a glance. Pop-up menus (**Play specific**, **Jump**) use enlarged, touch-friendly items rather than the small native default.
 
 ---
 
