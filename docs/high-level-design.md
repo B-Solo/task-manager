@@ -99,7 +99,7 @@ sequenceDiagram
       V->>C: Error
     end
   end
-  Note over C,V: Reconnect: resume commands
+  Note over C,V: On reconnect: operator re-taps to repaint the TV (no auto-resync)
 ```
 
 

@@ -93,7 +93,7 @@ sequenceDiagram
 2. **Catalogue.** The Controller persists the catalogue to `config/catalogue.json` and loads it from there on startup. It sends `get_catalogue` only when that file is missing or the operator triggers a refresh, then writes the reply back to disk. Because content is static, filming typically needs a single fetch for the whole week; refreshes are mainly a development convenience when media changes (see [High-Level Design §2, Static content](high-level-design.md#static-content)).
 3. **Show.** The Controller sends display commands. The Viewer renders each one and stays silent unless a command fails.
 4. **Disconnect.** If the socket drops, the Controller retries the connection automatically with backoff.
-5. **Reconnect.** On reconnect the cached catalogue is reused — the Controller does not refetch. The Viewer starts from a blank/background state, so the Controller resends the command for whatever should currently be on screen. There is no dedicated state-sync message.
+5. **Reconnect.** On reconnect the cached catalogue is reused — the Controller does not refetch. If the Viewer restarted it comes back on the idle background; there is no automatic state resync and no dedicated state-sync message, so the operator re-taps the action for whatever should currently be on screen and the next command repaints it.
 
 
 

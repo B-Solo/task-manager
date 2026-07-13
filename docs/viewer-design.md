@@ -313,7 +313,7 @@ Log to stderr or a local log file: command type, path, and error detail. Do not 
 
 ## 10. Reconnect behaviour
 
-On Controller reconnect, the Viewer does not replay state. The display stays on whatever the last command left (or the idle background if restarted). The Controller resends the command for the current intended screen ([protocol §4](protocol-design.md#4-connection-lifecycle)).
+On Controller reconnect, the Viewer does not replay state. The display stays on whatever the last command left (or the idle background if the Viewer itself restarted). There is no automatic state resync: the operator re-taps the action for the current intended screen and the next command repaints it ([protocol §4](protocol-design.md#4-connection-lifecycle)).
 
 After a Viewer **process restart**, paint the idle background immediately on launch — same rule as [§2](#seamless-full-screen-presentation).
 

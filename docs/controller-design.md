@@ -306,3 +306,4 @@ The footer bar is a chunky ~104 px band. Footer buttons ≥ 66 px tall, ~18 px a
 - Re-show scoreboard without walking back through prep
 - Editable step text during recording
 - Resume mid-clip on reconnect
+- Automatic TV state resync on reconnect (the operator re-taps the current action instead)
