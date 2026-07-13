@@ -56,8 +56,9 @@ with backoff if the Viewer restarts.
 
 - **Catalogue** — the Viewer scans `viewer/media/` and sends a catalogue to the
   Controller, which caches it at `controller/config/catalogue.json` and reuses
-  it across reconnects. A cache is committed for convenience; it is refreshed on
-  first connect and via the home screen's *Refresh catalogue* button.
+  it across reconnects. The cache lives under `controller/config/` and is **not**
+  committed (it's generated locally); it is fetched on first connect and via the
+  home screen's *Refresh catalogue* button.
 - **Show state** — per-episode scores and progress persist to
   `controller/config/episodes/<episode>/show_state.json`. Series standings are
   **derived** from these files (there is no season-level state file).
