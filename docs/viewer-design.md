@@ -67,7 +67,7 @@ viewer/
     display/
       window.py         # top-level QWidget, mode switching
       background.py     # idle background
-      media.py          # video (QMediaPlayer) and still (QLabel/QPixmap)
+      media.py          # video (QMediaPlayer -> QVideoSink surface) and still (QPixmap)
       scoreboard.py     # leaderboard widget (episode + series share one impl)
     catalogue.py        # scan media/, build catalogue payload
     assets.py           # paths, font registration, safe path resolution
@@ -117,7 +117,7 @@ There is a single selectable background this season — the idle background (`de
 
 | Input | Behaviour |
 | ----- | --------- |
-| Video | Play once, embedded in the main window. Aspect ratio preserved; videos are authored to fill the 16:9 display, and any unavoidable letterbox/pillarbox is plain black. **At the start**, keep the previous mode (usually the idle background) visible and only cut to the clip once its first frame has actually painted (detected via first non-zero playback position / buffered status, with a short fallback), so there is no black flash on the way in. When playback **ends on its own**, **hold on the final frame for 1 s** (the ended clip is kept loaded so its last frame stays on screen), then cut to the idle background and release the player. Any new command during that hold cancels it and takes over immediately. |
+| Video | Play once. Rendered by painting the player's frames ourselves via a `QVideoSink` (not a `QVideoWidget`), because that lets us **retain the last decoded frame** — a plain video widget blanks to black the moment playback ends. Aspect ratio preserved; videos are authored to fill the 16:9 display, and any unavoidable letterbox/pillarbox is plain black. **At the start**, keep the previous mode (usually the idle background) visible and only cut to the clip once its **first frame has actually arrived** at the sink (with a short fallback), so there is no black flash on the way in. When playback **ends on its own**, **hold on that final frame for 1 s** (the surface keeps the last valid frame; the end-of-stream empty frame is ignored), then cut to the idle background and release the player. Any new command during that hold cancels it and takes over immediately. |
 | Still | Shown until the next command; no auto-return to the idle background. **Contained and centred on black — never cropped, stretched, or rotated:** a portrait photo shows with black to its left and right rather than being cropped to fill. EXIF orientation is honoured (via `QImageReader` auto-transform) so phone photos display upright. **SVG** stills (e.g. a composited photo montage) are recognised too and rendered up to the TV resolution (rather than their small intrinsic size) so they stay crisp full-screen. Load off-screen; keep the previous frame visible until the still is decoded, then switch. |
 
 When a new `show_media` arrives during playback, stop the current video **without** clearing the display; show the new media once its first frame is ready (or the still is loaded). If the new file fails, revert to previous content or the idle background and send `error`.

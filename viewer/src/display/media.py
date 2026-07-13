@@ -8,10 +8,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QImageReader, QPixmap
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtMultimediaWidgets import QVideoWidget
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QImageReader, QPainter, QPixmap
+from PySide6.QtMultimedia import (
+    QAudioOutput,
+    QMediaPlayer,
+    QVideoFrame,
+    QVideoSink,
+)
 from PySide6.QtWidgets import QStackedWidget, QWidget
 
 import assets
@@ -23,6 +27,63 @@ def _fit_within(size: QSize, box: QSize) -> QSize:
     scale = min(box.width() / size.width(), box.height() / size.height())
     return QSize(max(1, round(size.width() * scale)),
                  max(1, round(size.height() * scale)))
+
+
+class _VideoSurface(QWidget):
+    """Paints the player's video frames ourselves via a QVideoSink.
+
+    We drive the player through a QVideoSink (rather than a QVideoWidget) for one
+    key reason: it lets us **keep the last decoded frame on screen**. A plain
+    QVideoWidget blanks to black the instant playback ends, which made the
+    end-of-clip "freeze on the final frame" show black instead. Here the last
+    valid frame is retained until we explicitly clear it, so the freeze is
+    pixel-accurate. As a bonus, the first frame's arrival is the exact moment
+    it's safe to reveal the video (no black flash on the way in).
+
+    Video fills the screen preserving aspect ratio (contained, centred on
+    black) — matching the authored 16:9 clips, never cropped or stretched.
+    """
+
+    frameArrived = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self.sink = QVideoSink(self)
+        self.sink.videoFrameChanged.connect(self._on_frame)
+        self._frame = QVideoFrame()
+
+    def _on_frame(self, frame: QVideoFrame) -> None:
+        # Ignore the invalid/empty frame some backends emit at end-of-stream, so
+        # the final real frame stays put for the freeze.
+        if frame.isValid() and not frame.size().isEmpty():
+            self._frame = frame
+            self.update()
+            self.frameArrived.emit()
+
+    def has_frame(self) -> bool:
+        return self._frame.isValid()
+
+    def clear(self) -> None:
+        self._frame = QVideoFrame()
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), Qt.GlobalColor.black)
+        if not self._frame.isValid():
+            return
+        fsize = self._frame.size()
+        if fsize.isEmpty():
+            return
+        target = _fit_within(fsize, self.size())
+        x = (self.width() - target.width()) / 2
+        y = (self.height() - target.height()) / 2
+        self._frame.paint(
+            painter,
+            QRectF(x, y, target.width(), target.height()),
+            QVideoFrame.PaintOptions(),
+        )
 
 
 class _StillView(QWidget):
@@ -70,8 +131,7 @@ class MediaView(QStackedWidget):
         super().__init__(parent)
         self.setStyleSheet("background-color: black;")
 
-        self._video = QVideoWidget(self)
-        self._video.setStyleSheet("background-color: black;")
+        self._video = _VideoSurface(self)
         self._still = _StillView(self)
         self.addWidget(self._video)
         self.addWidget(self._still)
@@ -79,9 +139,9 @@ class MediaView(QStackedWidget):
         self._player = QMediaPlayer(self)
         self._audio = QAudioOutput(self)
         self._player.setAudioOutput(self._audio)
-        self._player.setVideoOutput(self._video)
+        self._player.setVideoSink(self._video.sink)
         self._player.mediaStatusChanged.connect(self._on_status)
-        self._player.positionChanged.connect(self._on_position)
+        self._video.frameArrived.connect(self._mark_ready)
         self._player.errorOccurred.connect(self._on_error)
 
         self._pending_ready = False
@@ -96,6 +156,7 @@ class MediaView(QStackedWidget):
         then, so there is never a black flash between background and video.
         """
         self.setCurrentWidget(self._video)
+        self._video.clear()  # drop any previous clip's frozen final frame
         self._pending_ready = True
         self._player.setSource(QUrl.fromLocalFile(str(path)))
         self._player.play()
@@ -135,13 +196,9 @@ class MediaView(QStackedWidget):
         if self._player.playbackState() != QMediaPlayer.PlaybackState.StoppedState:
             self._player.stop()
         self._player.setSource(QUrl())
+        self._video.clear()
 
     # -- signals ----------------------------------------------------------
-    def _on_position(self, pos: int) -> None:
-        # First non-zero position means a frame has been presented.
-        if pos > 0:
-            self._mark_ready()
-
     def _on_status(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.BufferedMedia:
             self._mark_ready()
