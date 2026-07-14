@@ -46,6 +46,10 @@ class EpisodeState:
     ui_page: str = PAGE_EPISODE_INTRO
     previous_totals: dict[str, int] = field(default_factory=dict)
     task_scores: dict[str, int] = field(default_factory=dict)
+    # Analytics: each segment's final per-contestant scores, keyed by segment id
+    # (e.g. "task00_prize", "task01", "live_task"), captured at fold-in in play
+    # order. Never used by the show itself — kept for looking back later.
+    task_breakdown: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Ensure every contestant has an entry in both sets.
@@ -65,7 +69,16 @@ class EpisodeState:
         self.task_scores[cid] = value
 
     def fold_in(self) -> None:
-        """Fold task scores into previous totals and reset task scores (§4.3)."""
+        """Fold task scores into previous totals and reset task scores (§4.3).
+
+        Also records this segment's final scores in `task_breakdown` for later
+        analytics, since the per-task detail is otherwise lost once it merges
+        into the running totals.
+        """
+        if self.segment:
+            self.task_breakdown[self.segment] = {
+                cid: self.task_scores.get(cid, 0) for cid in self.contestant_ids
+            }
         for cid in self.contestant_ids:
             self.previous_totals[cid] = (
                 self.previous_totals.get(cid, 0) + self.task_scores.get(cid, 0)
@@ -80,6 +93,7 @@ class EpisodeState:
             "ui_page": self.ui_page,
             "previous_totals": self.previous_totals,
             "task_scores": self.task_scores,
+            "task_breakdown": self.task_breakdown,
         }
 
     @classmethod
@@ -92,6 +106,10 @@ class EpisodeState:
             ui_page=data.get("ui_page", PAGE_EPISODE_INTRO),
             previous_totals=dict(data.get("previous_totals", {})),
             task_scores=dict(data.get("task_scores", {})),
+            task_breakdown={
+                seg: dict(scores)
+                for seg, scores in data.get("task_breakdown", {}).items()
+            },
         )
 
 
@@ -178,15 +196,23 @@ class ShowStore:
                     previous_totals[cid] += combined[cid]
         return scores_payload(previous_totals, current_totals, self.contestant_ids)
 
+    def reset_episode(self, ep_id: str) -> None:
+        """Delete a single episode's saved state (development aid).
+
+        Leaves every other episode untouched — the point is to redo dev work on
+        later episodes without disturbing one that has already aired.
+        """
+        path = self._path(ep_id)
+        if path.is_file():
+            path.unlink()
+            log.info("Reset: removed %s", path)
+
     def reset_series(self) -> None:
         """Delete every episode's saved state (development aid)."""
         if not EPISODES_DIR.is_dir():
             return
         for ep_id in self.episode_ids:
-            path = self._path(ep_id)
-            if path.is_file():
-                path.unlink()
-                log.info("Reset: removed %s", path)
+            self.reset_episode(ep_id)
 
     def series_current_totals(self) -> dict[str, int]:
         """Series standings across all episodes as stored on disk (for home)."""

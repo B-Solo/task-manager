@@ -19,6 +19,10 @@ FONT_VETERAN = "assets/fonts/veteran_typewriter/veteran_typewriter-webfont.ttf"
 CONTESTANTS_JSON = "contestants.json"
 INTROS_DIR = "assets/intros"
 EPISODES_DIR = "episodes"
+# Series-wide clips (one per season, reused by every episode): the opening
+# intro, the closing outro, and the lead-in sting that precedes each task's
+# first clip. Resolved by base name so any recognised extension works.
+SERIES_DIR = "series"
 
 # Extensions the Viewer recognises, in resolution-precedence order.
 VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".webm")

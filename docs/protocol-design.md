@@ -123,6 +123,7 @@ Displays one media file — a video clip or a still image — full-screen. Used 
 | Field        | Type    | Required | Description                                                                 |
 | ------------ | ------- | -------- | --------------------------------------------------------------------------- |
 | `path`       | string  | yes      | Path to the file, relative to the Viewer's `media/` root.                  |
+| `preroll`    | string  | no       | Path to a clip to play **first**, chaining straight into `path`. Used only for a task's first (video) clip; see below. |
 
 
 ```json
@@ -133,6 +134,8 @@ The Viewer decides how to present the file from its extension.
 
 - **Video:** plays once. When playback finishes, the Viewer returns to the standard background automatically; the Controller does not send a separate `background` command for this. If the operator sends the next command before the clip ends, playback is replaced immediately.
 - **Still image:** has no natural end; the image stays on screen until the next command. There is no automatic return to the background.
+
+**Preroll (lead-in) chaining.** When `preroll` is present, the Viewer plays that clip first and, the instant it ends, cuts **straight** into `path` — with **no** end-of-clip freeze and no black in between (the preroll's last frame holds until the main clip's first frame paints). Only the main clip's end triggers the usual return-to-background (with its 1 s final-frame hold, see [Viewer design §4.2](viewer-design.md#42-media)). The Controller uses this so the series-wide `task_lead_in` sting immediately precedes each task's first video intro without the operator having to advance ([Controller design §4.1](controller-design.md#41-playback)). `preroll` is best-effort: if the clip is missing or not a video the Viewer reports an `error` but still plays `path` alone, so the show never stalls.
 
 Paths must stay within `media/`. The Viewer rejects any path that escapes the root (for example via `..`) with an `error` of code `bad_request`.
 
@@ -219,10 +222,12 @@ The example below is **illustrative and abbreviated** — the shipped fixtures h
       { "clip": "sting-classic",  "path": "assets/intros/sting-classic.mp4" },
       { "clip": "sting-dramatic", "path": "assets/intros/sting-dramatic.mp4" }
     ],
+    "intro": "series/intro.mp4",
+    "outro": "series/outro.mp4",
+    "task_lead_in": "series/task-lead-in.mp4",
     "episodes": [
       {
         "id": "ep01",
-        "intro": "episodes/ep01/intro.mp4",
         "opening_bit": { "text": "Welcome the crowd, then hand over to the Taskmaster." },
         "tasks": [
           {
@@ -256,8 +261,7 @@ The example below is **illustrative and abbreviated** — the shipped fixtures h
             ]
           }
         ],
-        "live_task": { "text": "Keep the balloon airborne with only a spoon. 100 seconds." },
-        "outro": "episodes/ep01/outro.mp4"
+        "live_task": { "text": "Keep the balloon airborne with only a spoon. 100 seconds." }
       }
     ]
   }
@@ -267,11 +271,11 @@ The example below is **illustrative and abbreviated** — the shipped fixtures h
 **Discovery rules the Viewer follows when building the catalogue:**
 
 - **Contestants** come from `contestants.json`. Only `id` and `name` are sent; profile images stay on the Viewer.
-- **Intro pool** — every file in `assets/intros/` is listed in the top-level `intros` array (`clip` = filename without extension, plus its `path`). The Controller uses this pool to pick a clip for a random task intro (see the intro-step rule below); the Viewer never chooses.
+- **Intro pool** — every file in `assets/intros/` is listed in the top-level `intros` array (`clip` = filename without extension, plus its `path`). The Controller uses this pool to pick a clip for a random task intro (see the intro-step rule below); the Viewer never chooses. (This is distinct from the single series-wide `intro` clip below.)
+- **Series-wide clips** — three clips are shared by the whole season and live under `media/series/`, resolved by base name (any recognised extension): `series/intro.<ext>` → top-level `intro` (the opening titles, played once per episode), `series/outro.<ext>` → top-level `outro` (the closing sequence), and `series/task-lead-in.<ext>` → top-level `task_lead_in` (the sting that precedes every task's first video clip, chained via `show_media`'s `preroll`, see [§5.2](#52-show_media)). Each is optional and omitted from the catalogue when absent; the Controller disables the matching action / skips the preroll accordingly.
 - **Episodes** are the sub-folders of `media/episodes/`, ordered alphabetically by folder name; the folder name is the episode `id`.
-- **Episode intro/outro** — if `intro.mp4` or `outro.mp4` exists at the episode root, it is surfaced as `intro` / `outro` in the catalogue.
 - **Episode text metadata** — every episode must contain `opening-bit.json` and `live-task.json` at its root, each of the form `{ "text": "…" }`. The Viewer reads both and inlines them into the catalogue as the `opening_bit` and `live_task` objects on the episode. The Controller cannot read the Viewer's disk, so this is the only way it obtains that text ([Controller design §3.3, §5, §8](controller-design.md)). A missing file is a fatal catalogue error the Viewer logs; both are required because every episode has an opening bit and a live task.
-- **Field order** — the episode object lists its fields in the order they are presented during the show: `id`, `intro`, `opening_bit`, `tasks`, `live_task`, `outro`. The `live_task` sits **after** `tasks` because the live task runs after all pre-recorded tasks.
+- **Field order** — the top-level catalogue lists `contestants`, `intros`, then the series-wide `intro`, `outro`, `task_lead_in`, then `episodes`. Each episode object lists its fields in show order: `id`, `opening_bit`, `tasks`, `live_task`. The `live_task` sits **after** `tasks` because the live task runs after all pre-recorded tasks. (The intro/outro are no longer per-episode.)
 - **Tasks** are the sub-folders of `episodes/<id>/tasks/`, ordered alphabetically by folder name; the folder name is the task `id`. The prize task uses id `task00_prize`.
 - **Task steps** — each task folder must contain `results.json` with a `steps` array (≥2 entries). The first step must be text-only (no `clip`). Steps are processed in array order. Each step includes `text`. If a step has `clip`, resolve it to the matching file in the same folder (`<clip>.mp4`, `<clip>.mov`, `<clip>.jpg`, …) and add `path` to the catalogue entry. Labels are unique within a task folder — no two files share a label — so the match is unambiguous. Media files in the folder that no step references are ignored (they never appear in the catalogue). Text-only steps (no `clip`) are optional and passed through in array order; by convention the first step is a briefing and the last step carries the overall rankings, but neither is required ([Controller design §2](controller-design.md#2-task-structure-resultsjson)). The catalogue exposes the full ordered `steps` array on each task object.
 - **Intro steps** — a step with the reserved label `"clip": "intro"` resolves specially: (1) if the task folder has its own `intro.<ext>`, that path is used; (2) else if the step has `"intro": "<name>"`, the pool clip `assets/intros/<name>.<ext>` is used; (3) otherwise the step is exposed as `{ "clip": "intro", "random_intro": true, "text": … }` with **no** `path` — the Controller picks a clip from the `intros` pool at play time and sends its `path` via `show_media`.

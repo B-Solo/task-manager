@@ -113,10 +113,11 @@ class ViewerWindow(QWidget):
         if assets.is_video(resolved):
             self._media_ref = ref
             self._media_command = protocol.SHOW_MEDIA
+            preroll = self._resolve_preroll(message, ref)
             # Keep the current mode (background/last clip) visible and only cut
             # to the video once its first frame is ready — no black flash.
             self._pending_video_reveal = True
-            self._media.show_video(resolved)
+            self._media.show_video(resolved, preroll=preroll)
         elif assets.is_image(resolved):
             self._pending_video_reveal = False
             if not self._media.show_still(resolved):
@@ -127,6 +128,27 @@ class ViewerWindow(QWidget):
         else:
             self._error(ref, protocol.UNSUPPORTED_MEDIA,
                         f"Unsupported media type: {path_rel}", protocol.SHOW_MEDIA)
+
+    def _resolve_preroll(self, message: dict, ref):
+        """Resolve an optional series-wide lead-in for a video command.
+
+        Best-effort: a lead-in that is missing or not a video is reported to the
+        Controller but never blocks the main clip — the show goes on.
+        """
+        preroll_rel = (message.get("payload") or {}).get("preroll")
+        if not preroll_rel or not isinstance(preroll_rel, str):
+            return None
+        try:
+            resolved = assets.resolve_media(preroll_rel)
+        except assets.PathEscapeError as exc:
+            self._error(ref, protocol.BAD_REQUEST, str(exc), protocol.SHOW_MEDIA)
+            return None
+        if not resolved.is_file() or not assets.is_video(resolved):
+            self._error(ref, protocol.NOT_FOUND,
+                        f"Lead-in unavailable, playing clip alone: {preroll_rel}",
+                        protocol.SHOW_MEDIA)
+            return None
+        return resolved
 
     def _do_background(self) -> None:
         self._pending_video_reveal = False

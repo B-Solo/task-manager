@@ -188,10 +188,12 @@ viewer/
       fonts/
       contestants/
       intros/
+    series/                 # series-wide clips, shared by every episode
+      intro.mp4             # opening titles
+      outro.mp4             # closing sequence
+      task-lead-in.mp4      # sting chained before each task's first video clip
     episodes/
       ep01/
-        intro.mp4
-        outro.mp4
         opening-bit.json      # operator notes for the opening bit (required)
         live-task.json        # reminder text for the live task (required)
         tasks/
@@ -207,15 +209,17 @@ viewer/
 | --------------------------------------------- | -------------------------------------- |
 | `controller/config/catalogue.json`            | Cached catalogue fetched from the Viewer |
 | `controller/config/episodes/<id>/`            | Scores and progress for that episode; series totals are derived from these |
-| `viewer/media/episodes/<id>/intro.mp4`        | Episode opening clip                   |
-| `viewer/media/episodes/<id>/outro.mp4`        | Episode closing clip                   |
+| `viewer/media/series/intro.*`                 | Series-wide opening clip (same for every episode) |
+| `viewer/media/series/outro.*`                 | Series-wide closing clip (same for every episode) |
+| `viewer/media/series/task-lead-in.*`          | Series-wide sting chained before each task's first video clip |
 | `viewer/media/episodes/<id>/opening-bit.json` | Operator notes after intro (required; inlined into the catalogue) |
 | `viewer/media/episodes/<id>/live-task.json`   | Live task reminder (required; inlined into the catalogue) |
 | `viewer/media/episodes/<id>/tasks/<task-id>/` | Task media and `results.json` (ordered steps). Prize task id is `task00_prize`. |
 | `viewer/media/contestants.json`               | Season cast, shared across episodes    |
 | `viewer/media/assets/`                        | Shared visuals, fonts, seals, backgrounds, scoreboard kit, intro stings |
 | `viewer/media/assets/intros/`                 | Pool of generic task-intro stings; one is chosen per task intro |
-| `viewer/media/episodes/`                      | Episode media (intros, task folders, outros) |
+| `viewer/media/series/`                        | Series-wide intro, outro, and task lead-in clips |
+| `viewer/media/episodes/`                      | Per-episode task folders and metadata (opening-bit / live-task) |
 
 
 ### The scoreboard is assembled, not a pre-rendered asset
@@ -290,6 +294,8 @@ The Viewer includes parsed steps (with resolved media paths) in the catalogue. S
 ### Scores
 
 **Episode scores** — each episode's `episodes/<id>/show_state.json` stores exactly two sets: **previous totals** (the running totals up to but not including the current task) and **task scores** (points for the current task only). A contestant's **combined total** is `previous + task`, derived when the leaderboard is shown. When a task finishes and the operator moves on, the Controller **folds** the task scores into previous totals (`previous += task`, then `task` resets to 0 for the next task). It follows that once every task including the live task has been folded in, the episode's previous totals *are* its final episode totals. Ties are broken alphabetically by display name.
+
+At each fold-in the segment's final per-contestant scores are also copied into a **`task_breakdown`** map (keyed by segment id, in play order) purely for later analytics — folding otherwise destroys the per-task split. Nothing in the show reads it back ([Controller design §9](controller-design.md#9-persistence)).
 
 **Series scores** — there is **no season-level state file**. Both the `previous` and `current` values a series leaderboard needs are **derived from the episode `show_state.json` files** at the moment `show_series_leaderboard` is sent:
 

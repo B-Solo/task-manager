@@ -61,7 +61,9 @@ def main() -> int:
     window.play_intro()
     assert window.state.ui_page == st.PAGE_OPENING_BIT
     assert client.sent[-1]["type"] == protocol.SHOW_MEDIA
-    assert client.sent[-1]["payload"]["path"].endswith("ep01/intro.mp4")
+    # Intro is now series-wide, not per-episode.
+    assert client.sent[-1]["payload"]["path"] == cached.intro()
+    assert client.sent[-1]["payload"]["path"].startswith("series/")
 
     # --- Prize task ---
     window.open_task("task00_prize")
@@ -105,6 +107,22 @@ def main() -> int:
     assert window.state.segment == "task01"
     assert window.state.previous_totals == scores  # prize folded in
     assert all(v == 0 for v in window.state.task_scores.values())
+    # Fold-in captured the prize task's per-contestant breakdown for analytics.
+    assert window.state.task_breakdown.get("task00_prize") == scores, \
+        window.state.task_breakdown
+
+    # --- A studio task's first clip is a video intro: playing forward into it
+    # prepends the series-wide lead-in as a preroll (only on forward play). ---
+    lead = cached.task_lead_in()
+    first_idx = window._first_media_index()
+    window.play_next()
+    intro_cmd = client.sent[-1]
+    assert intro_cmd["type"] == protocol.SHOW_MEDIA
+    if lead and window.state.step_index == first_idx:
+        assert intro_cmd["payload"].get("preroll") == lead, intro_cmd
+    # 'Play specific' of that same clip must NOT carry the lead-in.
+    window.play_specific(first_idx)
+    assert "preroll" not in client.sent[-1]["payload"], client.sent[-1]
 
     # --- Jump straight to the live task and finish the episode ---
     window.open_live_task()
@@ -136,7 +154,15 @@ def main() -> int:
     window.outro()
     assert window.ep_id is None  # back home
     assert client.sent[-1]["type"] == protocol.SHOW_MEDIA
-    assert client.sent[-1]["payload"]["path"].endswith("ep01/outro.mp4")
+    # Outro is now series-wide, not per-episode.
+    assert client.sent[-1]["payload"]["path"] == cached.outro()
+    assert client.sent[-1]["payload"]["path"].startswith("series/")
+
+    # ep01's saved state carries the full per-task breakdown (analytics).
+    ep01_saved = window.store.load_episode("ep01")
+    assert ep01_saved.task_breakdown.get("task00_prize") == scores
+    assert ep01_saved.task_breakdown.get("live_task") == {c: 3 for c in scores}, \
+        ep01_saved.task_breakdown
 
     # Series after ep01 complete: reopen ep02, series previous should equal ep01
     window.open_episode("ep02")
@@ -145,6 +171,25 @@ def main() -> int:
     # ep01 final = prize(scores) folded + live(all 3) = scores + 3 each
     expected_prev = {c: scores[c] + 3 for c in scores}
     assert prev == expected_prev, (prev, expected_prev)
+
+    # Per-episode reset wipes only that episode; others stay put.
+    window.reset_episode("ep01")
+    assert not (st.EPISODES_DIR / "ep01" / "show_state.json").is_file()
+    assert (st.EPISODES_DIR / "ep02" / "show_state.json").is_file()
+
+    # --- Dry run: in-memory scores, nothing written, auto-clears on home ---
+    window.go_home()
+    assert not window.dry_run
+    window.toggle_dry_run()
+    assert window.dry_run
+    window.open_episode("ep01")          # reset above -> no file on disk
+    window.state.set_task_score("taylor", 5)
+    window._persist()                    # would save normally; must no-op here
+    assert window.state.task_scores["taylor"] == 5   # kept for the run
+    assert not (st.EPISODES_DIR / "ep01" / "show_state.json").is_file(), \
+        "dry run must never write to disk"
+    window.go_home()
+    assert not window.dry_run            # a dry run ends with the episode
 
     print("SMOKE OK — commands sent:", len(client.sent))
     print("final sent types:", last_types(client, 6))

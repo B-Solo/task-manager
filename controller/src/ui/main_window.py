@@ -64,6 +64,11 @@ class MainWindow(QWidget):
 
         self.ep_id: str | None = None
         self.state: EpisodeState | None = None
+        # Dry run: run an episode end-to-end with scores held in memory only —
+        # nothing is written to disk, so a test run leaves the saved series
+        # untouched and never needs resetting. Armed on home, auto-clears on the
+        # way back home (i.e. when the episode ends).
+        self.dry_run = False
 
         self.connected = False
         self.tv_kind = "idle"   # idle | video | still | board
@@ -123,6 +128,13 @@ class MainWindow(QWidget):
         self._error_label.setVisible(False)
         root.addWidget(self._error_label)
 
+        self._dry_banner = QLabel("\u25c9 DRY RUN — scores are not being saved")
+        self._dry_banner.setStyleSheet(
+            "background:#3a2e0a; color:#f2d98a; padding:6px 20px;"
+            " font-size:15px; font-weight:bold;")
+        self._dry_banner.setVisible(False)
+        root.addWidget(self._dry_banner)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         self._content = QWidget()
@@ -164,6 +176,12 @@ class MainWindow(QWidget):
         else:
             self._conn.setText("\u25cf Disconnected")
             self._conn.setStyleSheet("font-size:16px; color:#e05555; font-weight:bold;")
+        # Connection-dependent buttons (Fetch / Refresh catalogue, per-episode
+        # Refresh) are built during render(), so their enabled state would go
+        # stale when the link comes up or drops after the page was drawn. Repaint
+        # the home / waiting page so they track the live connection state.
+        if self.ep_id is None:
+            self.render()
 
     def on_catalogue(self, payload: dict) -> None:
         cat = Catalogue(payload)
@@ -190,8 +208,8 @@ class MainWindow(QWidget):
     # ==================================================================
     # Sending helpers (also update the TV indicator = last-command intent)
     # ==================================================================
-    def _play_media(self, path: str, label: str) -> None:
-        self.client.send(protocol.show_media(self.ids.next(), path))
+    def _play_media(self, path: str, label: str, preroll: str | None = None) -> None:
+        self.client.send(protocol.show_media(self.ids.next(), path, preroll))
         ext = os.path.splitext(path)[1].lower()
         self.tv_kind = "video" if ext in VIDEO_EXTS else "still"
         self.tv_label = label
@@ -234,6 +252,29 @@ class MainWindow(QWidget):
     def _step_label(step: dict) -> str:
         return step.get("clip") or "clip"
 
+    @staticmethod
+    def _is_video(path: str) -> bool:
+        return os.path.splitext(path)[1].lower() in VIDEO_EXTS
+
+    def _first_media_index(self) -> int | None:
+        """Index of a task's first clip step (its intro), or None."""
+        for i, step in enumerate(self._steps()):
+            if self._is_media_step(step):
+                return i
+        return None
+
+    def _preroll_for(self, idx: int, path: str) -> str | None:
+        """The series-wide lead-in to prepend before *path*, or None.
+
+        Applies only to a task's **first clip** and only when that clip is a
+        **video** (so it precedes video task intros, not the prize task's photos
+        or the live task, which has no clips). Callers pass this only on the
+        natural forward play-through; 'Play specific' plays the clip bare.
+        """
+        if idx == self._first_media_index() and self._is_video(path):
+            return self.catalogue.task_lead_in()
+        return None
+
     def _resolve_media(self, step: dict) -> tuple[str | None, str]:
         """(path, label) for a media step, resolving a random intro."""
         if "path" in step:
@@ -247,6 +288,9 @@ class MainWindow(QWidget):
         return None, self._step_label(step)
 
     def _persist(self) -> None:
+        # In a dry run scores live only in memory; never touch disk.
+        if self.dry_run:
+            return
         if self.store and self.state:
             self.store.save_episode(self.state)
 
@@ -301,6 +345,7 @@ class MainWindow(QWidget):
         self._update_header()
 
     def _update_header(self) -> None:
+        self._dry_banner.setVisible(self.dry_run)
         # Right side always reflects the Viewer/TV state.
         self._tv.setText(f"TV: {self.tv_label}")
         # Left side reflects where the operator (controller) is.
@@ -379,23 +424,38 @@ class MainWindow(QWidget):
             self._paragraph(f"{pos}. {self.names.get(cid, cid)}   {total}")
 
         self._heading("Episodes")
+        self._jump_buttons = {}
         for ep_id in self.catalogue.episode_ids():
             row = QWidget()
             rl = QHBoxLayout(row)
             rl.setContentsMargins(0, 0, 0, 0)
+            rl.setSpacing(10)
             open_btn = footer_button(self._episode_display(ep_id))
             open_btn.clicked.connect(lambda _=False, e=ep_id: self.open_episode(e))
             rl.addWidget(open_btn, 1)
             jump = footer_button("Jump \u25be")
-            jump.setSizePolicy(jump.sizePolicy().horizontalPolicy(),
-                               jump.sizePolicy().verticalPolicy())
-            jump.setMaximumWidth(160)
+            jump.setMaximumWidth(150)
             jump.clicked.connect(lambda _=False, e=ep_id: self._jump_menu(e))
-            self._jump_buttons = getattr(self, "_jump_buttons", {})
             self._jump_buttons[ep_id] = jump
             rl.addWidget(jump, 0)
+            # Per-episode dev aids: re-scan media for content edits, and wipe
+            # just this episode's scores (leaving already-aired episodes alone).
+            refresh_ep = footer_button("\u21bb Refresh", primary=False)
+            refresh_ep.setMaximumWidth(150)
+            refresh_ep.setEnabled(self.connected)
+            refresh_ep.clicked.connect(lambda _=False: self.request_catalogue())
+            rl.addWidget(refresh_ep, 0)
+            reset_ep = footer_button("Reset", danger=True)
+            reset_ep.setMaximumWidth(130)
+            reset_ep.clicked.connect(lambda _=False, e=ep_id: self.reset_episode(e))
+            rl.addWidget(reset_ep, 0)
             self._content_layout.addWidget(row)
 
+        dry = footer_button(
+            "\u25c9 Dry run: ON" if self.dry_run else "Dry run: off",
+            primary=self.dry_run)
+        dry.clicked.connect(self.toggle_dry_run)
+        self._footer_layout.addWidget(dry, 0)
         reset = footer_button("Reset series (dev)", danger=True)
         reset.clicked.connect(self.reset_series)
         self._footer_layout.addWidget(reset, 0)
@@ -417,12 +477,11 @@ class MainWindow(QWidget):
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
 
     def _render_episode_intro(self) -> None:
-        ep = self.catalogue.episode(self.ep_id)
         self._heading(self._episode_display(self.ep_id))
-        self._paragraph("Play the episode intro when ready. The opening-bit "
+        self._paragraph("Play the series intro when ready. The opening-bit "
                         "notes will appear here while it plays.")
         play = footer_button("Play intro", big=True)
-        play.setEnabled(bool(ep and ep.get("intro")))
+        play.setEnabled(bool(self.catalogue.intro()))
         play.clicked.connect(self.play_intro)
         self._footer_layout.addWidget(footer_button_back(self.go_home))
         self._footer_layout.addStretch(1)
@@ -635,11 +694,19 @@ class MainWindow(QWidget):
         self._countdown_timer.stop()
         self.ep_id = None
         self.state = None
+        # Leaving an episode ends any dry run: it can't accidentally linger into
+        # a real run, and there's nothing to save/reset.
+        self.dry_run = False
         self.render()
 
     def open_episode(self, ep_id: str) -> None:
         self.ep_id = ep_id
-        self.state = self.store.load_episode(ep_id)
+        if self.dry_run:
+            # Start fresh in memory; ignore and never write disk state.
+            self.state = EpisodeState(episode_id=ep_id,
+                                      contestant_ids=self.store.contestant_ids)
+        else:
+            self.state = self.store.load_episode(ep_id)
         self.state.ui_page = st.PAGE_EPISODE_INTRO
         self.state.segment = self.state.segment or ""
         self._persist()
@@ -654,8 +721,7 @@ class MainWindow(QWidget):
         self.open_live_task()
 
     def play_intro(self) -> None:
-        ep = self.catalogue.episode(self.ep_id)
-        intro = ep.get("intro") if ep else None
+        intro = self.catalogue.intro()  # series-wide
         if intro:
             self._play_media(intro, "intro")
         self.state.ui_page = st.PAGE_OPENING_BIT
@@ -687,7 +753,7 @@ class MainWindow(QWidget):
         if self._is_media_step(step):
             path, label = self._resolve_media(step)
             if path:
-                self._play_media(path, label)
+                self._play_media(path, label, self._preroll_for(idx, path))
         else:
             self._arrive_text_step()
         self.state.step_index = idx
@@ -714,7 +780,9 @@ class MainWindow(QWidget):
         if self._is_media_step(step):
             path, label = self._resolve_media(step)
             if path:
-                self._play_media(path, label)
+                # In a degenerate [text, intro] task the first clip is also the
+                # final step, so still honour the forward-play lead-in here.
+                self._play_media(path, label, self._preroll_for(final, path))
         else:
             self._arrive_text_step()
         self.state.step_index = final
@@ -756,11 +824,28 @@ class MainWindow(QWidget):
         self._persist()
         self.render()
 
+    def reset_episode(self, ep_id: str) -> None:
+        """Development aid: wipe just this episode's saved scores/progress,
+        leaving every other episode (e.g. one already aired) untouched."""
+        if self.store:
+            self.store.reset_episode(ep_id)
+        # If the wiped episode happens to be open, drop back to a clean home.
+        if self.ep_id == ep_id:
+            self.ep_id = None
+            self.state = None
+        self.render()
+
     def reset_series(self) -> None:
         """Development aid: wipe all saved episode state and return home."""
         if self.store:
             self.store.reset_series()
         self.go_home()
+
+    def toggle_dry_run(self) -> None:
+        """Arm/disarm dry-run mode from the home page. When armed, the next
+        episode opened runs entirely in memory and is never saved."""
+        self.dry_run = not self.dry_run
+        self.render()
 
     def next_segment(self) -> None:
         self.state.fold_in()
@@ -775,8 +860,7 @@ class MainWindow(QWidget):
 
     def outro(self) -> None:
         self.state.fold_in()
-        ep = self.catalogue.episode(self.ep_id)
-        outro = ep.get("outro") if ep else None
+        outro = self.catalogue.outro()  # series-wide
         if outro:
             self._play_media(outro, "outro")
         self._persist()

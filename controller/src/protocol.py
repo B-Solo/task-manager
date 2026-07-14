@@ -46,8 +46,13 @@ def get_catalogue(msg_id: int) -> dict[str, Any]:
     return _envelope(GET_CATALOGUE, msg_id, {})
 
 
-def show_media(msg_id: int, path: str) -> dict[str, Any]:
-    return _envelope(SHOW_MEDIA, msg_id, {"path": path})
+def show_media(msg_id: int, path: str, preroll: str | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {"path": path}
+    if preroll:
+        # A series-wide lead-in the Viewer plays first, then chains straight
+        # into `path` with no freeze between (protocol §5.2).
+        payload["preroll"] = preroll
+    return _envelope(SHOW_MEDIA, msg_id, payload)
 
 
 def background(msg_id: int) -> dict[str, Any]:

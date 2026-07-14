@@ -145,20 +145,35 @@ class MediaView(QStackedWidget):
         self._player.errorOccurred.connect(self._on_error)
 
         self._pending_ready = False
+        # When a lead-in (preroll) is playing, this holds the main clip to play
+        # straight after it — see show_video()/_on_status().
+        self._next_path: Path | None = None
         self._ready_fallback = QTimer(self)
         self._ready_fallback.setSingleShot(True)
         self._ready_fallback.timeout.connect(self._mark_ready)
 
     # -- public API -------------------------------------------------------
-    def show_video(self, path: Path) -> None:
+    def show_video(self, path: Path, preroll: Path | None = None) -> None:
         """Start a clip. Emits `videoReady` once the first frame is painted so
         the caller can reveal it only then — the idle background stays up until
         then, so there is never a black flash between background and video.
+
+        If *preroll* is given, that (series-wide) clip plays first and, the
+        instant it ends, we cut straight into *path* with **no** end-of-clip
+        freeze and no black in between: the preroll's last frame stays up until
+        the main clip's first frame arrives. Only the main clip's end triggers
+        `finished` (and thus the normal 1 s hold).
         """
         self.setCurrentWidget(self._video)
         self._video.clear()  # drop any previous clip's frozen final frame
         self._pending_ready = True
-        self._player.setSource(QUrl.fromLocalFile(str(path)))
+        if preroll is not None:
+            self._next_path = path
+            first = preroll
+        else:
+            self._next_path = None
+            first = path
+        self._player.setSource(QUrl.fromLocalFile(str(first)))
         self._player.play()
         self._ready_fallback.start(self.READY_FALLBACK_MS)
 
@@ -192,6 +207,7 @@ class MediaView(QStackedWidget):
 
     def stop(self) -> None:
         self._pending_ready = False
+        self._next_path = None
         self._ready_fallback.stop()
         if self._player.playbackState() != QMediaPlayer.PlaybackState.StoppedState:
             self._player.stop()
@@ -203,7 +219,15 @@ class MediaView(QStackedWidget):
         if status == QMediaPlayer.MediaStatus.BufferedMedia:
             self._mark_ready()
         elif status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.finished.emit()
+            if self._next_path is not None:
+                # A lead-in just ended: chain straight into the main clip with
+                # no freeze and no black. Deliberately do NOT clear the surface,
+                # so the preroll's last frame holds until the main clip paints.
+                nxt, self._next_path = self._next_path, None
+                self._player.setSource(QUrl.fromLocalFile(str(nxt)))
+                self._player.play()
+            else:
+                self.finished.emit()
 
     def _on_error(self, error: QMediaPlayer.Error, message: str) -> None:
         if error == QMediaPlayer.Error.NoError:

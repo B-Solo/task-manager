@@ -36,6 +36,19 @@ class Catalogue:
     def intros(self) -> list[dict[str, str]]:
         return self.payload.get("intros", [])
 
+    # -- series-wide clips ------------------------------------------------
+    def intro(self) -> str | None:
+        """Series-wide opening intro clip (played once per episode)."""
+        return self.payload.get("intro")
+
+    def outro(self) -> str | None:
+        """Series-wide closing outro clip."""
+        return self.payload.get("outro")
+
+    def task_lead_in(self) -> str | None:
+        """Series-wide lead-in that precedes each task's first (video) clip."""
+        return self.payload.get("task_lead_in")
+
     # -- episodes / tasks -------------------------------------------------
     def episodes(self) -> list[dict[str, Any]]:
         return self.payload.get("episodes", [])

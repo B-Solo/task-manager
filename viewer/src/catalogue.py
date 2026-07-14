@@ -18,6 +18,7 @@ from assets import (
     INTROS_DIR,
     MEDIA_EXTS,
     MEDIA_ROOT,
+    SERIES_DIR,
 )
 
 log = logging.getLogger("viewer.catalogue")
@@ -127,13 +128,12 @@ def _build_task(task_dir: Path) -> dict[str, Any] | None:
 
 def _build_episode(ep_dir: Path) -> dict[str, Any]:
     """Build one episode object with fields in show order:
-    id, intro, opening_bit, tasks, live_task, outro.
+    id, opening_bit, tasks, live_task.
+
+    The intro and outro are series-wide (top-level catalogue fields), not
+    per-episode, so they are not resolved here.
     """
     ep: dict[str, Any] = {"id": ep_dir.name}
-
-    intro = ep_dir / "intro.mp4"
-    if intro.is_file():
-        ep["intro"] = _rel(intro)
 
     opening = ep_dir / "opening-bit.json"
     if not opening.is_file():
@@ -154,11 +154,17 @@ def _build_episode(ep_dir: Path) -> dict[str, Any]:
         log.error("Episode %s missing live-task.json (required)", ep_dir.name)
     ep["live_task"] = {"text": _read_text_json(live) if live.is_file() else ""}
 
-    outro = ep_dir / "outro.mp4"
-    if outro.is_file():
-        ep["outro"] = _rel(outro)
-
     return ep
+
+
+def _find_series_clip(name: str) -> Path | None:
+    """A series-wide clip `series/<name>.<ext>`, by extension precedence."""
+    base = MEDIA_ROOT / SERIES_DIR
+    for ext in MEDIA_EXTS:
+        candidate = base / f"{name}{ext}"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _build_contestants() -> list[dict[str, str]]:
@@ -194,8 +200,17 @@ def build_catalogue() -> dict[str, Any]:
         for ep_dir in sorted(p for p in episodes_dir.iterdir() if p.is_dir()):
             episodes.append(_build_episode(ep_dir))
 
-    return {
+    catalogue: dict[str, Any] = {
         "contestants": _build_contestants(),
         "intros": _build_intros(),
-        "episodes": episodes,
     }
+    # Series-wide clips (§6.1): opening intro, closing outro, and the lead-in
+    # that precedes each task's first clip. Each is optional; the Controller
+    # simply disables the matching action when a clip is absent.
+    for field, name in (("intro", "intro"), ("outro", "outro"),
+                        ("task_lead_in", "task-lead-in")):
+        clip = _find_series_clip(name)
+        if clip is not None:
+            catalogue[field] = _rel(clip)
+    catalogue["episodes"] = episodes
+    return catalogue

@@ -71,9 +71,13 @@ The app opens on a **home** page:
 
 **Jump (optional):** each episode row expands to list its segments (`task00_prize`, `task01`, …, **Live task**). Tapping a segment opens that task directly (or the live task page), for rehearsals or picking up mid-episode. No intro sequence.
 
+**Per-episode dev aids:** each row also carries **↻ Refresh** and **Reset** buttons. **Refresh** re-scans the Viewer's media (a full `get_catalogue`, so it also refreshes every other episode's structure but never touches scores; disabled while disconnected). **Reset** wipes **only that episode's** saved scores/progress, leaving every other episode intact — the point being to keep re-doing dev work on later episodes without disturbing one that has already aired. The footer keeps the whole-series **Reset series (dev)** (wipes every episode) and a global **Refresh catalogue**. All connection-dependent buttons re-enable the moment the link comes up, so a refresh button is never left stalely greyed after connecting.
+
+**Dry run (dev):** a footer toggle **Dry run: off / ◉ Dry run: ON**. When armed, a persistent banner shows across every page and the next episode opened runs **entirely in memory** — it starts from clean scores, ignores any saved state, and **never writes to disk**, so the whole episode (scoring, episode + series scoreboards) behaves exactly as normal but leaves the saved series untouched. Scores persist for the duration of the run (so scoreboards animate correctly); the run simply evaporates when the episode ends. Dry-run auto-clears whenever the Controller returns **home** (via the outro or the ⌂ Home button), so it can never linger into a real run and there is nothing to reset afterwards.
+
 ### 3.2 Episode intro page
 
-Single button: **Play intro** → `show_media` → `episodes/<id>/intro.mp4`, and the Controller **immediately** opens the **opening bit** page ([§3.3](#33-opening-bit-page)). Alex does not use the iPad while the intro plays. When the intro ends, the Viewer returns to idle; the Controller stays on the opening bit page.
+Single button: **Play intro** → `show_media` → the series-wide `intro` clip (`media/series/intro.*`, the same titles for every episode), and the Controller **immediately** opens the **opening bit** page ([§3.3](#33-opening-bit-page)). Alex does not use the iPad while the intro plays. When the intro ends, the Viewer returns to idle; the Controller stays on the opening bit page.
 
 ### 3.3 Opening bit page
 
@@ -87,7 +91,7 @@ After the **live task** is scored ([§5](#5-live-task)), the forward action on t
 
 The **pre-outro page** is the beat between the final scoreboard and the outro: the TV rests on the idle background while the operator gets ready. Footer: **Back** (→ post-display) and **Play outro**.
 
-**Play outro** → `show_media` → `episodes/<id>/outro.mp4`, and the Controller **immediately** returns to **home** ([§3.1](#31-home--episode-picker)). When the outro ends, the Viewer returns to idle.
+**Play outro** → `show_media` → the series-wide `outro` clip (`media/series/outro.*`, the same closing sequence for every episode), and the Controller **immediately** returns to **home** ([§3.1](#31-home--episode-picker)). When the outro ends, the Viewer returns to idle.
 
 Studio tasks use **Next task** or **Live task** on prep/post-display when another segment follows ([§4.5](#45-scoreboard-branches)).
 
@@ -136,6 +140,8 @@ stateDiagram-v2
 Shows the current step's text (plus **Next clip** when the next step has media — see [§2](#2-task-structure-resultsjson)).
 
 **Play next clip** advances one step and sends `show_media` if that step has a `clip`. If the advanced-to step is a **random intro** (the catalogue marks it `random_intro`), the Controller first picks a clip at random from the catalogue's `intros` pool and sends that path; a task with its own intro file or a named `intro` override already carries a fixed `path` and is sent as-is. The random pick is not persisted, so re-tapping after a reconnect may choose a **different** sting — any intro is acceptable, so this is fine.
+
+**Series-wide task lead-in.** When the clip being played is the task's **first** clip *and* it is a **video** (its intro), the Controller attaches the catalogue's `task_lead_in` as the `show_media` `preroll` ([Protocol §5.2](protocol-design.md#52-show_media)): the Viewer plays that shared sting first and chains straight into the task intro with no gap. This applies only on the natural forward play-through into the first clip — a **Play specific** jump to it (or any later clip) plays the clip bare. It is skipped when the task's first clip is a still (the prize task's photos) and for the live task (which has no clips), and simply omitted if no `task_lead_in` exists.
 
 **Score** advances to the final step (scoring page). Shown on the penultimate step. If the final step has a `clip`, Score also sends `show_media` for it — the recap still or video appears on the Viewer while Alex scores; it is not skipped.
 
@@ -250,7 +256,7 @@ Both files are `{ "text": "…" }` and are **required in every episode** — eve
 
 ## 9. Persistence
 
-`episodes/<id>/show_state.json` stores exactly two score sets — **`previous_totals`** (running totals up to but not including the current task) and **`task_scores`** (the current task only) — plus the operator's place in the episode. A contestant's combined total is `previous_totals + task_scores`; see [High-Level Design §5](high-level-design.md#scores) for the fold-in and series rules.
+`episodes/<id>/show_state.json` stores exactly two live score sets — **`previous_totals`** (running totals up to but not including the current task) and **`task_scores`** (the current task only) — plus the operator's place in the episode and a **`task_breakdown`** analytics record. A contestant's combined total is `previous_totals + task_scores`; see [High-Level Design §5](high-level-design.md#scores) for the fold-in and series rules.
 
 ```json
 {
@@ -258,11 +264,18 @@ Both files are `{ "text": "…" }` and are **required in every episode** — eve
   "step_index": 4,
   "ui_page": "scoring",
   "previous_totals": { "taylor": 4, "max": 2, "charlie": 5, "peter": 3, "harry": 1 },
-  "task_scores":     { "taylor": 2, "max": 3, "charlie": 0, "peter": 5, "harry": 1 }
+  "task_scores":     { "taylor": 2, "max": 3, "charlie": 0, "peter": 5, "harry": 1 },
+  "task_breakdown": {
+    "task00_prize": { "taylor": 4, "max": 2, "charlie": 5, "peter": 3, "harry": 1 }
+  }
 }
 ```
 
 Here the prize task has already been folded into `previous_totals` (`Charlie 5, Taylor 4, Peter 3, Max 2, Harry 1`), and `task_scores` holds Task 01's points. Combined totals are therefore `Peter 8, Taylor 6, Charlie 5, Max 5, Harry 2` — the numbers the scoreboard-prep page reads out ([worked example](controller-worked-example.md)).
+
+**`task_breakdown`** is a purely additive analytics record: as each segment is folded in, its final per-contestant scores are copied under its segment id (`task00_prize`, `task01`, …, `live_task`), in play order. The show never reads it back — `previous_totals`/`task_scores` alone drive the leaderboards — but because folding merges each task's detail into the running total, this is the only place the per-task split survives for looking back afterwards.
+
+**Dry run** ([§3.1](#31-home--episode-picker)) suspends all of this: every save is skipped, so no `show_state.json` is created or modified for the episode under test. The in-memory `EpisodeState` still folds and accumulates as usual (leaderboards work), but the moment the episode ends the state is discarded with nothing on disk to clean up.
 
 `segment`: the id of the current task (`task00_prize` | `task01` | `task02` | …) or `live_task` for the live segment.
 

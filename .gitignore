@@ -26,6 +26,8 @@ htmlcov/
 # Heavy / per-episode sample media
 viewer/media/episodes/
 viewer/media/assets/intros/
+# Series-wide sample clips (intro, outro, task lead-in)
+viewer/media/series/
 # Local working media (scratch, not part of the app): raw source clips and
 # exported/processed output kept on the editing machine only.
 raw-media/
