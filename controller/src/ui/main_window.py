@@ -512,6 +512,8 @@ class MainWindow(QWidget):
         self._footer_layout.addWidget(footer_button_back(self.back))
         self._footer_layout.addWidget(self._play_specific_button())
         self._footer_layout.addStretch(1)
+        if self.tv_kind == "video":
+            self._footer_layout.addWidget(self._pause_button())
         if self.tv_kind in ("video", "still") and idx > 0:
             cancel = footer_button("Cancel playing")
             cancel.clicked.connect(self.cancel_playing)
@@ -534,6 +536,8 @@ class MainWindow(QWidget):
         self._footer_layout.addWidget(footer_button_back(self.back))
         self._footer_layout.addWidget(self._play_specific_button())
         self._footer_layout.addStretch(1)
+        if self.tv_kind == "video":
+            self._footer_layout.addWidget(self._pause_button())
         if self.tv_kind in ("video", "still"):
             cancel = footer_button("Cancel playing")
             cancel.clicked.connect(self.cancel_playing)
@@ -658,6 +662,15 @@ class MainWindow(QWidget):
     def _on_score_changed(self, cid: str, value: int) -> None:
         self.state.set_task_score(cid, value)
         self._persist()
+
+    def _pause_button(self) -> QPushButton:
+        """Play/pause toggle for a rolling video. Fire-and-forget: the Viewer
+        ignores it unless a clip is actually mid-playback, so one button safely
+        covers both pause and resume regardless of the (unknown) Viewer state."""
+        btn = footer_button("\u23ef Pause / play", primary=False)
+        btn.setMaximumWidth(200)
+        btn.clicked.connect(self.toggle_playback)
+        return btn
 
     def _play_specific_button(self) -> QPushButton:
         btn = footer_button("Play specific \u25be")
@@ -799,6 +812,12 @@ class MainWindow(QWidget):
     def cancel_playing(self) -> None:
         self._send_background()
         self.render()
+
+    def toggle_playback(self) -> None:
+        """Send a play/pause toggle to the Viewer. Does not change the TV
+        indicator: the Controller can't know whether the clip is now paused or
+        playing, and it does not need to — the toggle is applied Viewer-side."""
+        self.client.send(protocol.toggle_playback(self.ids.next()))
 
     def to_prep(self) -> None:
         self.state.ui_page = st.PAGE_SCOREBOARD_PREP

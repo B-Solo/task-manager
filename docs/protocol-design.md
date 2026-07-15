@@ -16,6 +16,7 @@ The full set of message types, so the vocabulary is visible without cross-refere
 | `get_catalogue`           | C → V     | Request a scan of `media/` (only when no cache exists or the operator refreshes). |
 | `show_media`              | C → V     | Show a video clip or still image full-screen.                                   |
 | `background`              | C → V     | Clear the screen to the standard background.                                      |
+| `toggle_playback`         | C → V     | Play/pause a rolling video (no-op unless a clip is mid-playback).                  |
 | `show_leaderboard`        | C → V     | Show the episode leaderboard, animating previous → current.                       |
 | `show_series_leaderboard` | C → V     | Show the series leaderboard, animating previous → current.                        |
 | `catalogue`               | V → C     | Reply to `get_catalogue` describing everything on disk.                           |
@@ -194,6 +195,23 @@ Identical in shape and behaviour to `show_leaderboard`, but shows cumulative **s
   }
 }
 ```
+
+
+
+### 5.6 `toggle_playback`
+
+A fire-and-forget **play/pause toggle** for a rolling video. The Controller has no view of the Viewer's playback state (§4, fire-and-forget), so rather than distinct pause/resume commands there is a single toggle: the Viewer flips whatever state the current video is in, exactly like the play/pause key on a remote.
+
+**Payload:** empty.
+
+```json
+{ "type": "toggle_playback", "id": 41, "payload": {} }
+```
+
+- **Mid-video:** if a clip is playing it pauses (holding on the current frame); if paused it resumes.
+- **Anything else:** a **no-op**. When the Viewer is on the idle background, showing a still, or holding the end-of-clip freeze, the underlying player is stopped, so the toggle is silently ignored and never restarts a finished clip nor disturbs the pending return to background. This is what lets the Controller expose the button whenever it *thinks* a video is up without risking a stray effect.
+
+Pausing does not affect the end-of-clip behaviour: a paused clip simply never reaches its end until resumed, and the 1 s final-frame hold still applies once it finishes naturally ([Viewer design §4.2](viewer-design.md#42-media)). The operator-pacing assumption (§4) still holds — Alex won't advance the show until the clip has actually finished, paused or not.
 
 
 

@@ -124,6 +124,15 @@ def main() -> int:
     window.play_specific(first_idx)
     assert "preroll" not in client.sent[-1]["payload"], client.sent[-1]
 
+    # --- Pause/play toggle: fire-and-forget, empty payload, and it must not
+    # disturb the TV indicator (the Controller can't know the playback state). ---
+    assert window.tv_kind == "video"
+    tv_before = (window.tv_kind, window.tv_label)
+    window.toggle_playback()
+    assert client.sent[-1]["type"] == protocol.TOGGLE_PLAYBACK
+    assert client.sent[-1]["payload"] == {}
+    assert (window.tv_kind, window.tv_label) == tv_before
+
     # --- Jump straight to the live task and finish the episode ---
     window.open_live_task()
     assert window.state.ui_page == st.PAGE_LIVE_TASK

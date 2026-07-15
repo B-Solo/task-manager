@@ -16,6 +16,7 @@ PORT = 8765
 GET_CATALOGUE = "get_catalogue"
 SHOW_MEDIA = "show_media"
 BACKGROUND = "background"
+TOGGLE_PLAYBACK = "toggle_playback"
 SHOW_LEADERBOARD = "show_leaderboard"
 SHOW_SERIES_LEADERBOARD = "show_series_leaderboard"
 
@@ -57,6 +58,13 @@ def show_media(msg_id: int, path: str, preroll: str | None = None) -> dict[str, 
 
 def background(msg_id: int) -> dict[str, Any]:
     return _envelope(BACKGROUND, msg_id, {})
+
+
+def toggle_playback(msg_id: int) -> dict[str, Any]:
+    """Fire-and-forget play/pause toggle. The Controller cannot know whether a
+    clip is actually rolling, so this is a no-op on the Viewer unless a video is
+    mid-playback (protocol §5.6)."""
+    return _envelope(TOGGLE_PLAYBACK, msg_id, {})
 
 
 def show_leaderboard(msg_id: int, scores: list[dict]) -> dict[str, Any]:

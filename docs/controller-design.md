@@ -133,7 +133,7 @@ stateDiagram-v2
 
 **Display names** are derived from ids, not stored titles: an episode id `epNN` renders as `Ep NN`; a task id containing `_prize` renders as **Prize task** and the live segment as **Live task**; any other task id `taskNN` renders as `Task NN`. This same rule drives the home-page episode/segment list ([§3.1](#31-home--episode-picker)).
 
-**Footer (playback & scoring):** Back and Play specific always available. **Back** is iPad-only navigation — it moves the Controller to the previous page and never sends a wire command or changes what is on the TV. **Cancel playing** whenever the TV is showing media — not on step 1 (idle); on the scoring page it appears only when the final step carries a `clip` (so a recap still can be cleared).
+**Footer (playback & scoring):** Back and Play specific always available. **Back** is iPad-only navigation — it moves the Controller to the previous page and never sends a wire command or changes what is on the TV. **Cancel playing** whenever the TV is showing media — not on step 1 (idle); on the scoring page it appears only when the final step carries a `clip` (so a recap still can be cleared). **⏯ Pause / play** appears whenever the TV is showing a **video** (a still cannot be paused): it sends the fire-and-forget `toggle_playback` ([protocol §5.6](protocol-design.md#56-toggle_playback)). Because the Controller does not track the Viewer's playback state, one button covers both pause and resume, and it is harmless if the clip has in fact already finished (the Viewer ignores it). It leaves the TV indicator unchanged.
 
 ### 4.1 Playback
 

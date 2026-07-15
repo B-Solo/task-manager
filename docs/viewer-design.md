@@ -123,6 +123,8 @@ There is a single selectable background this season — the idle background (`de
 
 When a new `show_media` arrives during playback, stop the current video **without** clearing the display; show the new media once its first frame is ready (or the still is loaded). If the new file fails, revert to previous content or the idle background and send `error`.
 
+**Pause/resume.** `toggle_playback` ([protocol §5.6](protocol-design.md#56-toggle_playback)) flips a rolling video between playing and paused, holding on the current frame while paused. It is applied only when a video is actually mid-playback (the player is in its playing/paused state); on the idle background, a still, or the end-of-clip freeze the player is stopped, so the command is a silent no-op — it never restarts a finished clip and never cancels the pending return to background. Because it is a passive control it does not touch the display-mode state machine.
+
 Path validation: resolve under `media/`, reject `..` and absolute paths → `error` `bad_request`.
 
 ### 4.3 Episode leaderboard

@@ -74,6 +74,12 @@ class ViewerWindow(QWidget):
     # -- command dispatch (runs on the GUI thread) ------------------------
     def handle_command(self, message: dict) -> None:
         mtype = message.get("type")
+        if mtype == protocol.TOGGLE_PLAYBACK:
+            # Passive play/pause: it must not disturb the display-mode state
+            # machine nor cancel a pending end-of-clip freeze, so handle it up
+            # front. A no-op unless a video is actually mid-playback.
+            self._media.toggle_pause()
+            return
         # Any new command cancels a pending end-of-clip freeze.
         self._freeze_timer.stop()
         try:

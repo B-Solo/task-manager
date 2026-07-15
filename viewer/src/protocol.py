@@ -17,6 +17,7 @@ MAX_MESSAGE_BYTES = 1 * 1024 * 1024  # 1 MiB (protocol §2 Robustness)
 GET_CATALOGUE = "get_catalogue"
 SHOW_MEDIA = "show_media"
 BACKGROUND = "background"
+TOGGLE_PLAYBACK = "toggle_playback"
 SHOW_LEADERBOARD = "show_leaderboard"
 SHOW_SERIES_LEADERBOARD = "show_series_leaderboard"
 
@@ -24,6 +25,7 @@ COMMANDS = {
     GET_CATALOGUE,
     SHOW_MEDIA,
     BACKGROUND,
+    TOGGLE_PLAYBACK,
     SHOW_LEADERBOARD,
     SHOW_SERIES_LEADERBOARD,
 }

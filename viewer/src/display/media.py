@@ -102,20 +102,22 @@ class _StillView(QWidget):
         self.update()
 
     def paintEvent(self, event) -> None:  # noqa: N802
-        from PySide6.QtGui import QPainter
-
         painter = QPainter(self)
         painter.fillRect(self.rect(), Qt.GlobalColor.black)
         if self._pixmap.isNull():
             return
-        scaled = self._pixmap.scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+        # Centre with float maths (matching the video surface): integer `//2`
+        # floored the offset, handing the leftover odd pixel to the right margin
+        # so the image sat a hair left of centre. A QRectF target is symmetric.
+        target = _fit_within(self._pixmap.size(), self.size())
+        x = (self.width() - target.width()) / 2
+        y = (self.height() - target.height()) / 2
+        painter.drawPixmap(
+            QRectF(x, y, target.width(), target.height()),
+            self._pixmap,
+            QRectF(self._pixmap.rect()),
         )
-        x = (self.width() - scaled.width()) // 2
-        y = (self.height() - scaled.height()) // 2
-        painter.drawPixmap(x, y, scaled)
 
 
 class MediaView(QStackedWidget):
@@ -204,6 +206,17 @@ class MediaView(QStackedWidget):
         self._still.set_pixmap(QPixmap.fromImage(image))
         self.setCurrentWidget(self._still)
         return True
+
+    def toggle_pause(self) -> None:
+        """Play/pause toggle, meaningful only mid-video. A no-op when nothing is
+        playing (idle background, a still, or the end-of-clip freeze — all of
+        which leave the player Stopped), so the Controller can fire it blindly.
+        """
+        state = self._player.playbackState()
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self._player.pause()
+        elif state == QMediaPlayer.PlaybackState.PausedState:
+            self._player.play()
 
     def stop(self) -> None:
         self._pending_ready = False
